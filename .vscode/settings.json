@@ -1,0 +1,26 @@
+{
+	"files.exclude": {
+		"**/.git": true,
+		"**/.svn": true,
+		"**/.hg": true,
+		"**/CVS": true,
+		"**/.DS_Store": true,
+		"**/*.o": true,
+		"**/*.exe": true,
+	},
+	"files.associations": {
+		"stdlib.h": "c",
+		"interaction.h": "c",
+		"ghost.h": "c",
+		"player.h": "c",
+		"runningWolf.h": "c",
+		"raylib.h": "c",
+		"goblinarcher.h": "c",
+		"npc.h": "c",
+		"iterator": "c",
+		"*.m": "c",
+		"algorithm": "c",
+		"format": "c"
+	},
+	"C_Cpp.errorSquiggles": "enabled"
+}
