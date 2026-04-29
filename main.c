@@ -35,6 +35,7 @@ int main(void)
 
             DrawText("Congrats! You created your first window!", 190, 200, 20, LIGHTGRAY);
             DrawText("Congrats! You created your first window!", 220, 200, 20, RED);
+            DrawText("Congrats! You created your first window!", 220, 200, 20, RED);
 
         EndDrawing();
     }
