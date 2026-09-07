@@ -5,36 +5,48 @@
 - [w64devkit](https://github.com/skeeto/w64devkit) (ou outro toolchain
   GCC/MinGW compatível) instalado em `C:\raylib\w64devkit`.
 - [raylib](https://www.raylib.com/) compilada em `C:\raylib\raylib`
-  (o script espera `raylib/src` com `libraylib.a`/headers).
+  (o `Makefile`/`build.bat` esperam `raylib/src` com `libraylib.a`/headers).
 
-Esses caminhos são fixos no `build.bat` (`PATH` e `RAYLIB_PATH`). Se o seu
-ambiente usa outra localização, ajuste as variáveis no topo do script.
+Esses caminhos são os padrões usados pelo `Makefile` e pelo `build.bat`. Se
+o seu ambiente usa outra localização, sobrescreva via variável
+(`RAYLIB_PATH=...`) ou ajuste as variáveis no topo dos arquivos.
 
-## Compilar e rodar (Desktop)
+## Compilar e rodar — `make` (recomendado)
 
-Na raiz do projeto:
+Na raiz do projeto, com `C:\raylib\w64devkit\bin` disponível (o `Makefile`
+já usa o gcc de lá diretamente, não precisa estar no `PATH`):
+
+```bat
+make               :: build release (game.exe)
+make BUILD_MODE=DEBUG   :: build debug (símbolos, sem otimização)
+make run           :: build + executa
+make clean         :: remove build/ e game.exe
+```
+
+Diferente do `build.bat`, o `Makefile` só recompila os `.c` que mudaram
+(ou cujos headers mudaram) desde o último build — build incremental, bem
+mais rápido a cada alteração pequena.
+
+### Build + debug pelo VS Code (`F5`)
+
+`.vscode/tasks.json` define as tasks `build debug` e `build release`
+(chamam o `Makefile` acima) e `.vscode/launch.json` usa essas tasks como
+`preLaunchTask`. Ou seja, `F5` no VS Code já compila e abre o jogo com o
+`gdb` anexado (breakpoints, step, inspeção de variáveis), sem precisar de
+terminal nem de watcher externo.
+
+- **Debug** (`F5` padrão): build debug + gdb anexado.
+- **Run**: build release + executa.
+
+## Compilar e rodar — `build.bat` (alternativa simples)
 
 ```bat
 build.bat
 ```
 
-O script:
-
-1. Encerra qualquer `game.exe` em execução.
-2. Compila `main.c` + todos os `.c` de `src/modules/` com GCC
-   (`-std=c99`, `-DPLATFORM_DESKTOP`).
-3. Linka com raylib e as bibliotecas do Windows necessárias (`opengl32`,
-   `gdi32`, `winmm`, `shell32`, `user32`).
-4. Se a compilação for bem-sucedida, executa `game.exe` automaticamente.
-
-Erros de compilação são exibidos no terminal; o executável só roda se o
-build passar (`errorlevel == 0`).
-
-### Alternativa via VS Code
-
-`.vscode/tasks.json` define tasks `build debug` e `build release` usando
-`make`/`mingw32-make`, seguindo o padrão de projetos raylib
-(`RAYLIB_PATH=C:/raylib/raylib`). Use `Ctrl+Shift+B` no VS Code.
+Faz um build completo (não incremental — recompila tudo sempre) e roda
+`game.exe` em seguida. Útil como um comando único e "burro" para rodar por
+fora do VS Code, ou como alvo de um watcher (veja abaixo).
 
 ## Compilar para Android
 
@@ -44,15 +56,15 @@ configurados nas variáveis do topo do arquivo (`ANDROID_HOME`,
 `ANDROID_TOOLCHAIN`, `JAVA_HOME`, etc.) — ajuste conforme o seu ambiente
 antes de rodar `make -f Makefile.Android`.
 
-## Live reload durante desenvolvimento
+## Live reload durante desenvolvimento (opcional)
 
-O fluxo de desenvolvimento usa `nodemon` (não versionado no repositório)
-para observar os arquivos-fonte e disparar `build.bat` automaticamente a
-cada alteração, evitando compilar/rodar manualmente a cada mudança. Exemplo
-de uso (requer Node.js instalado):
+Para recompilar/relançar automaticamente ao salvar um arquivo (sem
+precisar apertar `F5` a cada mudança), use um watcher de arquivos chamando
+`make run` — por exemplo `watchexec` (binário único, sem depender de
+Node.js):
 
 ```bat
-nodemon --exec build.bat --watch main.c --watch src -e c,h
+watchexec -w main.c -w src -e c,h -- make run
 ```
 
 Ajuste os parâmetros conforme a sua configuração local.

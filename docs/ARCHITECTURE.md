@@ -25,7 +25,8 @@ UML/
 │       ├── renderer.c
 │       └── ui.c
 ├── main.c                 # Ponto de entrada: janela, câmera, game loop
-├── build.bat               # Script de build para Windows (desktop, MinGW/w64devkit)
+├── Makefile                # Build incremental para desktop (recomendado, ver BUILD.md)
+├── build.bat               # Script de build alternativo para Windows (não incremental)
 ├── Makefile.Android         # Build para Android (raylib build system)
 └── .vscode/                 # Tasks e configs do editor (build debug/release via make)
 ```
