@@ -6,12 +6,17 @@
 #include "storage.h"
 #include <stdio.h>
 
-#define MENU_BAR_HEIGHT 50
+#define TAB_HEIGHT       26
+#define TAB_WIDTH        84
+#define MENU_BAR_HEIGHT  (TAB_HEIGHT + 52)
 #define BUTTON_PADDING   10
-#define BUTTON_WIDTH    105
-#define BUTTON_HEIGHT    30
-#define BUTTON_GAP        8
-#define MENU_BUTTON_COUNT 7
+#define BUTTON_WIDTH     64
+#define BUTTON_HEIGHT    44
+#define BUTTON_GAP        4
+
+#define ICON_SIZE        18
+#define ICON_THICKNESS  1.6f
+#define CAPTION_FONT     12
 
 #define STATUS_DURATION 2.5
 #define STATUS_LEN       96
@@ -81,7 +86,12 @@ static Rectangle GetPanelBounds(void)
 static Rectangle GetButtonBounds(int index)
 {
     return (Rectangle){BUTTON_PADDING + index * (BUTTON_WIDTH + BUTTON_GAP),
-                        (MENU_BAR_HEIGHT - BUTTON_HEIGHT) / 2.0f, BUTTON_WIDTH, BUTTON_HEIGHT};
+                        TAB_HEIGHT + 4, BUTTON_WIDTH, BUTTON_HEIGHT};
+}
+
+static Rectangle GetTabBounds(int index)
+{
+    return (Rectangle){BUTTON_PADDING + index * TAB_WIDTH, 0, TAB_WIDTH, TAB_HEIGHT};
 }
 
 bool IsMouseOverUi(void)
@@ -91,25 +101,211 @@ bool IsMouseOverUi(void)
     return CheckCollisionPointRec(mouse, GetMenuBarBounds()) || CheckCollisionPointRec(mouse, GetPanelBounds());
 }
 
-static void DrawMenuButton(Rectangle button, const char *label, bool isArmed, int *cursor, void (*onClick)(void))
+
+// Os icones sao desenhados com primitivas porque a fonte carregada so tem os
+// 95 caracteres ASCII: emoji e simbolos Unicode nao renderizam.
+
+typedef enum
+{
+    ICON_CLASS = 0,
+    ICON_RELATION,
+    ICON_SAVE,
+    ICON_LOAD,
+    ICON_FULLSCREEN,
+    ICON_THEME,
+    ICON_GRID
+}IconKind;
+
+static void IconClass(Rectangle a, Color tint)
+{
+    DrawRectangleLinesEx(a, ICON_THICKNESS, tint);
+    DrawLineEx((Vector2){a.x, a.y + a.height * 0.36f},
+               (Vector2){a.x + a.width, a.y + a.height * 0.36f}, ICON_THICKNESS, tint);
+}
+
+static void IconRelation(Rectangle a, Color tint)
+{
+    float box = a.width * 0.36f;
+
+    DrawRectangleLinesEx((Rectangle){a.x, a.y, box, box}, ICON_THICKNESS, tint);
+    DrawRectangleLinesEx((Rectangle){a.x + a.width - box, a.y + a.height - box, box, box}, ICON_THICKNESS, tint);
+    DrawLineEx((Vector2){a.x + box, a.y + box},
+               (Vector2){a.x + a.width - box, a.y + a.height - box}, ICON_THICKNESS, tint);
+}
+
+// direction = 1 desce (salvar), -1 sobe (abrir)
+static void IconArrowTray(Rectangle a, Color tint, int direction)
+{
+    float midX = a.x + a.width / 2.0f;
+    float head = a.width * 0.26f;
+    float top = a.y;
+    float arrowEnd = a.y + a.height * 0.60f;
+    float tipY = (direction > 0) ? arrowEnd : top;
+    float tailY = (direction > 0) ? top : arrowEnd;
+
+    DrawLineEx((Vector2){midX, tailY}, (Vector2){midX, tipY}, ICON_THICKNESS, tint);
+
+    Vector2 tip = {midX, tipY};
+    Vector2 left = {midX - head, tipY - direction * head};
+    Vector2 right = {midX + head, tipY - direction * head};
+
+    DrawTriangle(tip, left, right, tint);
+    DrawTriangle(tip, right, left, tint);
+
+    DrawLineEx((Vector2){a.x, a.y + a.height}, (Vector2){a.x + a.width, a.y + a.height}, ICON_THICKNESS, tint);
+}
+
+static void IconFullscreen(Rectangle a, Color tint)
+{
+    float arm = a.width * 0.34f;
+
+    for (int corner = 0; corner < 4; corner++)
+    {
+        float x = (corner == 1 || corner == 2) ? a.x + a.width : a.x;
+        float y = (corner == 2 || corner == 3) ? a.y + a.height : a.y;
+        float dx = (corner == 1 || corner == 2) ? -arm : arm;
+        float dy = (corner == 2 || corner == 3) ? -arm : arm;
+
+        DrawLineEx((Vector2){x, y}, (Vector2){x + dx, y}, ICON_THICKNESS, tint);
+        DrawLineEx((Vector2){x, y}, (Vector2){x, y + dy}, ICON_THICKNESS, tint);
+    }
+}
+
+static void IconTheme(Rectangle a, Color tint)
+{
+    Vector2 center = {a.x + a.width / 2.0f, a.y + a.height / 2.0f};
+    float radius = a.width / 2.0f;
+
+    DrawCircleSector(center, radius, 180.0f, 360.0f, 24, tint);
+    DrawCircleLines((int)center.x, (int)center.y, radius, tint);
+}
+
+static void IconGrid(Rectangle a, Color tint)
+{
+    for (int i = 1; i < 3; i++)
+    {
+        float t = i / 3.0f;
+
+        DrawLineEx((Vector2){a.x + a.width * t, a.y},
+                   (Vector2){a.x + a.width * t, a.y + a.height}, 1.2f, tint);
+        DrawLineEx((Vector2){a.x, a.y + a.height * t},
+                   (Vector2){a.x + a.width, a.y + a.height * t}, 1.2f, tint);
+    }
+
+    DrawRectangleLinesEx(a, ICON_THICKNESS, tint);
+}
+
+static void DrawIcon(IconKind kind, Rectangle area, Color tint)
+{
+    switch (kind)
+    {
+        case ICON_CLASS:      IconClass(area, tint); break;
+        case ICON_RELATION:   IconRelation(area, tint); break;
+        case ICON_SAVE:       IconArrowTray(area, tint, 1); break;
+        case ICON_LOAD:       IconArrowTray(area, tint, -1); break;
+        case ICON_FULLSCREEN: IconFullscreen(area, tint); break;
+        case ICON_THEME:      IconTheme(area, tint); break;
+        default:              IconGrid(area, tint); break;
+    }
+}
+
+
+typedef struct
+{
+    IconKind icon;
+    const char *caption;
+    bool (*isArmed)(void);
+    void (*onClick)(void);
+}ToolbarButton;
+
+typedef struct
+{
+    const char *name;
+    const ToolbarButton *buttons;
+    int count;
+}ToolbarTab;
+
+static const ToolbarButton fileButtons[] = {
+    {ICON_SAVE, "salvar", NULL, SaveToDefaultFile},
+    {ICON_LOAD, "abrir",  NULL, LoadFromDefaultFile}
+};
+
+static const ToolbarButton insertButtons[] = {
+    {ICON_CLASS,    "classe", IsPlacingClass,      ArmClassPlacement},
+    {ICON_RELATION, "ligar",  IsRelationModeArmed, ArmRelationMode}
+};
+
+static const ToolbarButton viewButtons[] = {
+    {ICON_FULLSCREEN, "tela",    IsWindowFullscreen,  ToggleFullscreenMode},
+    {ICON_THEME,      "tema",    IsDarkMode,          ToggleTheme},
+    {ICON_GRID,       "alinhar", IsSnapToGridEnabled, ToggleSnapToGrid}
+};
+
+static const ToolbarTab tabs[] = {
+    {"Arquivo", fileButtons,   2},
+    {"Inserir", insertButtons, 2},
+    {"Exibir",  viewButtons,   3}
+};
+
+#define TAB_COUNT 3
+
+// Inserir e a aba de trabalho: e de onde nascem classes e relacionamentos
+static int activeTab = 1;
+
+static void DrawTabStrip(int *cursor)
+{
+    for (int i = 0; i < TAB_COUNT; i++)
+    {
+        Rectangle tab = GetTabBounds(i);
+        bool active = (i == activeTab);
+        bool hover = CheckCollisionPointRec(GetMousePosition(), tab);
+
+        if (hover)
+        {
+            *cursor = MOUSE_CURSOR_POINTING_HAND;
+            if (!IsClassNameRequired() && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) activeTab = i;
+        }
+
+        if (active) DrawRectangleRec(tab, ThemeSurface());
+
+        Color textColor = active ? ThemeAccent() : (hover ? ThemeText() : ThemeTextMuted());
+        int width = MeasureUiText(tabs[i].name, 13);
+        DrawUiText(tabs[i].name, tab.x + (tab.width - width) / 2.0f, tab.y + 6, 13, textColor);
+
+        // Sublinhado marca a aba ativa sem depender so da cor do texto
+        if (active)
+        {
+            DrawRectangle(tab.x, tab.y + tab.height - 2, tab.width, 2, ThemeAccent());
+        }
+    }
+}
+
+static void DrawMenuButton(Rectangle button, IconKind icon, const char *caption, bool isArmed,
+                           int *cursor, void (*onClick)(void))
 {
     Color borderColor = ThemeBorder();
-    Color textColor = ThemeText();
+    Color contentColor = ThemeText();
 
     if (CheckCollisionPointRec(GetMousePosition(), button))
     {
         borderColor = ThemeAccent();
-        textColor = ThemeAccent();
+        contentColor = ThemeAccent();
         *cursor = MOUSE_CURSOR_POINTING_HAND;
 
         if (!IsClassNameRequired() && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) onClick();
     }
 
-    if (isArmed) { borderColor = ThemeAccent(); textColor = ThemeAccent(); }
+    if (isArmed) { borderColor = ThemeAccent(); contentColor = ThemeAccent(); }
 
     DrawRectangleRec(button, isArmed ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
-    DrawUiText(label, button.x + 10, button.y + 8, 14, textColor);
     DrawRectangleLinesEx(button, 1, borderColor);
+
+    Rectangle iconArea = {button.x + (button.width - ICON_SIZE) / 2.0f, button.y + 7, ICON_SIZE, ICON_SIZE};
+    DrawIcon(icon, iconArea, contentColor);
+
+    int captionWidth = MeasureUiText(caption, CAPTION_FONT);
+    DrawUiText(caption, button.x + (button.width - captionWidth) / 2.0f,
+               button.y + button.height - CAPTION_FONT - 5, CAPTION_FONT, contentColor);
 }
 
 void DrawUi(int *cursor) {
@@ -120,26 +316,35 @@ void DrawUi(int *cursor) {
     DrawRectangleRec(menuBar, ThemeMenuBar());
     DrawLine(0, menuBar.height, GetScreenWidth(), menuBar.height, ThemeBorder());
 
-    DrawMenuButton(GetButtonBounds(0), "Criar Classe", IsPlacingClass(), cursor, ArmClassPlacement);
-    DrawMenuButton(GetButtonBounds(1), "Relacionar", IsRelationModeArmed(), cursor, ArmRelationMode);
-    DrawMenuButton(GetButtonBounds(2), "Salvar", false, cursor, SaveToDefaultFile);
-    DrawMenuButton(GetButtonBounds(3), "Carregar", false, cursor, LoadFromDefaultFile);
-    DrawMenuButton(GetButtonBounds(4), "Tela Cheia", IsWindowFullscreen(), cursor, ToggleFullscreenMode);
-    DrawMenuButton(GetButtonBounds(5), IsDarkMode() ? "Tema Claro" : "Tema Escuro", IsDarkMode(), cursor, ToggleTheme);
-    DrawMenuButton(GetButtonBounds(6), "Alinhar", IsSnapToGridEnabled(), cursor, ToggleSnapToGrid);
+    DrawTabStrip(cursor);
 
-    bool overButton = false;
-    for (int i = 0; i < MENU_BUTTON_COUNT; i++)
+    const ToolbarTab *tab = &tabs[activeTab];
+
+    for (int i = 0; i < tab->count; i++)
     {
-        if (CheckCollisionPointRec(GetMousePosition(), GetButtonBounds(i))) overButton = true;
+        bool armed = (tab->buttons[i].isArmed != NULL) && tab->buttons[i].isArmed();
+        DrawMenuButton(GetButtonBounds(i), tab->buttons[i].icon, tab->buttons[i].caption,
+                       armed, cursor, tab->buttons[i].onClick);
     }
 
-    if (!overButton && CheckCollisionPointRec(GetMousePosition(), menuBar)) *cursor = MOUSE_CURSOR_DEFAULT;
+    bool overControl = false;
+
+    for (int i = 0; i < TAB_COUNT && !overControl; i++)
+    {
+        if (CheckCollisionPointRec(GetMousePosition(), GetTabBounds(i))) overControl = true;
+    }
+
+    for (int i = 0; i < tab->count && !overControl; i++)
+    {
+        if (CheckCollisionPointRec(GetMousePosition(), GetButtonBounds(i))) overControl = true;
+    }
+
+    if (!overControl && CheckCollisionPointRec(GetMousePosition(), menuBar)) *cursor = MOUSE_CURSOR_DEFAULT;
 
     if (GetTime() < statusUntil)
     {
-        float statusX = GetButtonBounds(MENU_BUTTON_COUNT - 1).x + BUTTON_WIDTH + 20;
-        DrawUiText(statusMessage, statusX, (MENU_BAR_HEIGHT - 14) / 2.0f, 14, statusColor);
+        float statusX = GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 20;
+        DrawUiText(statusMessage, statusX, TAB_HEIGHT + 18, 14, statusColor);
     }
 
     // Cobre o canvas, mas nao o painel: o campo do nome fica sendo a unica
