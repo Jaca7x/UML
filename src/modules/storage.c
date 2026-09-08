@@ -103,6 +103,13 @@ char *SerializeDiagram(void)
             used += snprintf(text + used, capacity - used, "param %c \"%s\" \"%s\"\n",
                              cls->params[p].visibility, cls->params[p].name, cls->params[p].type);
         }
+
+        for (int m = 0; m < cls->methodCount; m++)
+        {
+            used += snprintf(text + used, capacity - used, "method %c \"%s\" \"%s\" \"%s\"\n",
+                             cls->methods[m].visibility, cls->methods[m].name,
+                             cls->methods[m].args, cls->methods[m].returnType);
+        }
     }
 
     for (int i = 0; i < GetRelationCount(); i++)
@@ -137,13 +144,49 @@ bool SaveDiagram(const char *path)
     return saved;
 }
 
+// Extrai o conteudo do n-esimo trecho entre aspas da linha.
+//
+// Existe porque %[^"] do sscanf falha em string vazia: numa linha como
+//   method + "extrato" "" "String"
+// o campo vazio interrompe a leitura e todos os campos seguintes se perdem.
+static bool ExtractQuoted(const char *line, int index, char *out, int outSize)
+{
+    const char *cursor = line;
+
+    for (int i = 0; i <= index; i++)
+    {
+        cursor = strchr(cursor, '"');
+        if (cursor == NULL) return false;
+        cursor++;
+
+        const char *end = strchr(cursor, '"');
+        if (end == NULL) return false;
+
+        if (i == index)
+        {
+            int length = (int)(end - cursor);
+            if (length > outSize - 1) length = outSize - 1;
+
+            memcpy(out, cursor, length);
+            out[length] = '\0';
+
+            return true;
+        }
+
+        cursor = end + 1;
+    }
+
+    return false;
+}
+
 static bool ReadClassLine(const char *line, int *lastClassIndex)
 {
     int id;
     float x, y, userWidth, userHeight;
     char name[CLASS_NAME_LEN] = {0};
 
-    if (sscanf(line, "class %d %f %f %f %f \"%63[^\"]\"", &id, &x, &y, &userWidth, &userHeight, name) < 5) return false;
+    if (sscanf(line, "class %d %f %f %f %f", &id, &x, &y, &userWidth, &userHeight) != 5) return false;
+    ExtractQuoted(line, 0, name, sizeof(name));
 
     // Largura e altura reais sao recalculadas a partir do conteudo no proximo frame
     Rectangle bounds = {x, y, 0.0f, 0.0f};
@@ -159,9 +202,31 @@ static bool ReadParamLine(const char *line, int lastClassIndex)
     char type[PARAM_TYPE_LEN] = {0};
 
     if (lastClassIndex == -1) return false;
-    if (sscanf(line, "param %c \"%47[^\"]\" \"%31[^\"]\"", &visibility, name, type) != 3) return false;
+    if (sscanf(line, "param %c", &visibility) != 1) return false;
+
+    ExtractQuoted(line, 0, name, sizeof(name));
+    ExtractQuoted(line, 1, type, sizeof(type));
 
     AddParamToClass(lastClassIndex, visibility, name, type);
+
+    return true;
+}
+
+static bool ReadMethodLine(const char *line, int lastClassIndex)
+{
+    char visibility;
+    char name[METHOD_NAME_LEN] = {0};
+    char args[METHOD_ARGS_LEN] = {0};
+    char returnType[METHOD_TYPE_LEN] = {0};
+
+    if (lastClassIndex == -1) return false;
+    if (sscanf(line, "method %c", &visibility) != 1) return false;
+
+    ExtractQuoted(line, 0, name, sizeof(name));
+    ExtractQuoted(line, 1, args, sizeof(args));
+    ExtractQuoted(line, 2, returnType, sizeof(returnType));
+
+    AddMethodToClass(lastClassIndex, visibility, name, args, returnType);
 
     return true;
 }
@@ -173,9 +238,10 @@ static bool ReadRelationLine(const char *line)
     char fromMultiplicity[MULTIPLICITY_LEN] = {0};
     char toMultiplicity[MULTIPLICITY_LEN] = {0};
 
-    // As multiplicidades podem estar vazias, entao nao entram na contagem minima
-    if (sscanf(line, "relation %d %d %31s \"%7[^\"]\" \"%7[^\"]\"", &fromId, &toId, key,
-               fromMultiplicity, toMultiplicity) < 3) return false;
+    if (sscanf(line, "relation %d %d %31s", &fromId, &toId, key) != 3) return false;
+
+    ExtractQuoted(line, 0, fromMultiplicity, sizeof(fromMultiplicity));
+    ExtractQuoted(line, 1, toMultiplicity, sizeof(toMultiplicity));
 
     AddRelationFromData(fromId, toId, ParseRelationTypeKey(key), fromMultiplicity, toMultiplicity);
 
@@ -204,6 +270,7 @@ bool DeserializeDiagram(const char *text)
 
         if (strncmp(line, "class ", 6) == 0) ReadClassLine(line, &lastClassIndex);
         else if (strncmp(line, "param ", 6) == 0) ReadParamLine(line, lastClassIndex);
+        else if (strncmp(line, "method ", 7) == 0) ReadMethodLine(line, lastClassIndex);
         else if (strncmp(line, "relation ", 9) == 0) ReadRelationLine(line);
 
         if (newline == NULL) break;

@@ -1,6 +1,7 @@
 #include "../include/widgets.h"
 #include "../include/uifont.h"
 #include "../include/theme.h"
+#include "../include/theme.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -67,4 +68,33 @@ bool PanelField(Rectangle rect, const char *value, bool focused, int *cursor)
 void PanelLabel(const char *text, float x, float y)
 {
     DrawUiText(text, x, y, LABEL_FONT_SIZE, ThemeTextMuted());
+}
+
+int PanelTabs(Rectangle area, const char **names, int count, int active, int *cursor)
+{
+    float width = area.width / count;
+
+    for (int i = 0; i < count; i++)
+    {
+        Rectangle tab = {area.x + i * width, area.y, width, area.height};
+        bool selected = (i == active);
+        bool hover = CheckCollisionPointRec(GetMousePosition(), tab);
+
+        if (hover)
+        {
+            *cursor = MOUSE_CURSOR_POINTING_HAND;
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) active = i;
+        }
+
+        Color textColor = selected ? ThemeAccent() : (hover ? ThemeText() : ThemeTextMuted());
+        int textWidth = MeasureUiText(names[i], 12);
+
+        DrawUiText(names[i], tab.x + (tab.width - textWidth) / 2.0f, tab.y + 6, 12, textColor);
+
+        // Sublinhado marca a ativa sem depender so da cor
+        DrawRectangle(tab.x + 4, tab.y + tab.height - 2, tab.width - 8, 2,
+                      selected ? ThemeAccent() : Fade(ThemeBorder(), 0.4f));
+    }
+
+    return active;
 }

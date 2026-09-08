@@ -20,7 +20,7 @@
 #define PARAM_FONT_SIZE     14
 #define PARAM_LINE_HEIGHT   18
 #define PARAMS_PADDING       8
-#define BASE_PARAMS_HEIGHT  64
+#define BASE_SECTION_HEIGHT 40
 
 #define RESIZE_HANDLE_SIZE  10
 #define TEXT_BUFFER_LEN    128
@@ -29,6 +29,8 @@
 #define PANEL_ROW_HEIGHT   22
 #define PANEL_LABEL_FONT   13
 #define PANEL_GAP           6
+#define SECTION_SPACING    24
+#define BLOCK_INDENT       14
 #define PARAM_TYPE_COUNT   10
 #define TYPE_COLUMNS        3
 
@@ -37,7 +39,10 @@ typedef enum
     FOCUS_NONE = 0,
     FOCUS_CLASS_NAME,
     FOCUS_PARAM_NAME,
-    FOCUS_PARAM_TYPE
+    FOCUS_PARAM_TYPE,
+    FOCUS_METHOD_NAME,
+    FOCUS_METHOD_ARGS,
+    FOCUS_METHOD_TYPE
 }PanelFocus;
 
 static const char *paramTypes[PARAM_TYPE_COUNT] = {
@@ -55,6 +60,7 @@ static int nextClassId = 1;
 
 static int selectedIndex = -1;
 static int selectedParam = -1;
+static int selectedMethod = -1;
 static PanelFocus panelFocus = FOCUS_NONE;
 
 // Laco de selecao (Shift + arrastar no vazio)
@@ -92,6 +98,7 @@ void ClearClassSelection(void)
     DeselectAll();
     selectedIndex = -1;
     selectedParam = -1;
+    selectedMethod = -1;
     panelFocus = FOCUS_NONE;
 }
 
@@ -152,6 +159,7 @@ static void SelectClass(int index)
     if (selectedIndex != index)
     {
         selectedParam = -1;
+        selectedMethod = -1;
         panelFocus = FOCUS_NONE;
     }
 
@@ -166,6 +174,7 @@ static void ToggleClassInSelection(int index)
 {
     arrayClass[index].isSelected = !arrayClass[index].isSelected;
     selectedParam = -1;
+    selectedMethod = -1;
     panelFocus = FOCUS_NONE;
 
     if (arrayClass[index].isSelected)
@@ -264,7 +273,7 @@ int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth
     loaded->isSelected = false;
     loaded->isDragging = false;
     loaded->paramCount = 0;
-    loaded->methods[0] = '\0';
+    loaded->methodCount = 0;
     snprintf(loaded->name, CLASS_NAME_LEN, "%s", name);
 
     // Ids do arquivo nao podem colidir com os das proximas classes criadas
@@ -293,7 +302,7 @@ static void AddUMLClass(Vector2 position)
 
     UMLClass *newClass = &arrayClass[clickCount - 1];
     newClass->bounds.width = BASE_BOX_WIDTH;
-    newClass->bounds.height = BASE_PARAMS_HEIGHT;
+    newClass->bounds.height = BASE_SECTION_HEIGHT;
     newClass->bounds.x = SnapValue(position.x - newClass->bounds.width / 2.0f);
     newClass->bounds.y = SnapValue(position.y - newClass->bounds.height / 2.0f);
 
@@ -303,7 +312,7 @@ static void AddUMLClass(Vector2 position)
     newClass->userWidth = 0.0f;
     newClass->userHeight = 0.0f;
     newClass->paramCount = 0;
-    newClass->methods[0] = '\0';
+    newClass->methodCount = 0;
     snprintf(newClass->name, sizeof(newClass->name), "Classe%d", clickCount);
 }
 
@@ -355,6 +364,20 @@ static void AddParam(int classIndex)
 
     cls->paramCount++;
     selectedParam = cls->paramCount - 1;
+    selectedMethod = -1;
+    panelFocus = FOCUS_PARAM_NAME;
+}
+
+static void DuplicateParam(int classIndex, int paramIndex)
+{
+    UMLClass *cls = &arrayClass[classIndex];
+    if (cls->paramCount >= MAX_PARAMS) return;
+
+    cls->params[cls->paramCount] = cls->params[paramIndex];
+    cls->paramCount++;
+
+    selectedParam = cls->paramCount - 1;
+    selectedMethod = -1;
     panelFocus = FOCUS_PARAM_NAME;
 }
 
@@ -370,6 +393,65 @@ static void RemoveParam(int classIndex, int paramIndex)
     cls->paramCount--;
 
     if (selectedParam >= cls->paramCount) selectedParam = -1;
+}
+
+void AddMethodToClass(int index, char visibility, const char *name, const char *args, const char *returnType)
+{
+    UMLClass *cls = &arrayClass[index];
+    if (cls->methodCount >= MAX_METHODS) return;
+
+    UMLMethod *method = &cls->methods[cls->methodCount];
+    method->visibility = visibility;
+    snprintf(method->name, METHOD_NAME_LEN, "%s", name);
+    snprintf(method->args, METHOD_ARGS_LEN, "%s", args);
+    snprintf(method->returnType, METHOD_TYPE_LEN, "%s", returnType);
+
+    cls->methodCount++;
+}
+
+static void AddMethod(int classIndex)
+{
+    UMLClass *cls = &arrayClass[classIndex];
+    if (cls->methodCount >= MAX_METHODS) return;
+
+    AddMethodToClass(classIndex, '+', "novoMetodo", "", "void");
+
+    selectedMethod = cls->methodCount - 1;
+    selectedParam = -1;
+    panelFocus = FOCUS_METHOD_NAME;
+}
+
+static void DuplicateMethod(int classIndex, int methodIndex)
+{
+    UMLClass *cls = &arrayClass[classIndex];
+    if (cls->methodCount >= MAX_METHODS) return;
+
+    cls->methods[cls->methodCount] = cls->methods[methodIndex];
+    cls->methodCount++;
+
+    selectedMethod = cls->methodCount - 1;
+    selectedParam = -1;
+    panelFocus = FOCUS_METHOD_NAME;
+}
+
+static void RemoveMethod(int classIndex, int methodIndex)
+{
+    UMLClass *cls = &arrayClass[classIndex];
+
+    for (int i = methodIndex; i < cls->methodCount - 1; i++)
+    {
+        cls->methods[i] = cls->methods[i + 1];
+    }
+
+    cls->methodCount--;
+
+    if (selectedMethod >= cls->methodCount) selectedMethod = -1;
+}
+
+// Assinatura UML: visibilidade nome(argumentos): retorno
+static void FormatMethod(const UMLMethod *method, char *out, int outSize)
+{
+    snprintf(out, outSize, "%c %s(%s): %s", method->visibility, method->name, method->args, method->returnType);
 }
 
 static void FormatParam(const UMLParam *param, char *out, int outSize)
@@ -445,12 +527,26 @@ static void GetContentSize(const UMLClass *cls, float *outWidth, float *outHeigh
         if (paramWidth > width) width = paramWidth;
     }
 
-    if (paramsHeight < BASE_PARAMS_HEIGHT) paramsHeight = BASE_PARAMS_HEIGHT;
+    float methodsHeight = PARAMS_PADDING * 2;
+
+    for (int i = 0; i < cls->methodCount; i++)
+    {
+        char text[TEXT_BUFFER_LEN];
+        FormatMethod(&cls->methods[i], text, sizeof(text));
+
+        methodsHeight += GetWrappedText(text, PARAM_FONT_SIZE, GetTextMaxWidth(), buf, sizeof(buf)) * PARAM_LINE_HEIGHT;
+
+        int methodWidth = MeasureUiText(text, PARAM_FONT_SIZE) + NAME_PADDING * 2;
+        if (methodWidth > width) width = methodWidth;
+    }
+
+    if (paramsHeight < BASE_SECTION_HEIGHT) paramsHeight = BASE_SECTION_HEIGHT;
+    if (methodsHeight < BASE_SECTION_HEIGHT) methodsHeight = BASE_SECTION_HEIGHT;
     if (width < BASE_BOX_WIDTH) width = BASE_BOX_WIDTH;
     if (width > MAX_BOX_WIDTH) width = MAX_BOX_WIDTH;
 
     *outWidth = (float)width;
-    *outHeight = GetNameSectionHeight(nameLines) + paramsHeight;
+    *outHeight = GetNameSectionHeight(nameLines) + paramsHeight + methodsHeight;
 }
 
 static void UpdateClassBoxSize(UMLClass *cls)
@@ -693,6 +789,7 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         DrawLine(arrayClass[i].bounds.x, dividerY, arrayClass[i].bounds.x + arrayClass[i].bounds.width, dividerY, colorClass);
 
         float rowY = dividerY + PARAMS_PADDING;
+        float paramsBottom = dividerY;
 
         for (int p = 0; p < arrayClass[i].paramCount; p++)
         {
@@ -701,6 +798,27 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
 
             int lines = GetWrappedText(text, PARAM_FONT_SIZE, GetTextMaxWidth(), display, sizeof(display));
             Color rowColor = (i == selectedIndex && p == selectedParam) ? ThemeAccent() : ThemeTextMuted();
+
+            DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING, rowY, PARAM_FONT_SIZE, rowColor);
+            rowY += lines * PARAM_LINE_HEIGHT;
+        }
+
+        // Segunda divisoria: atributos em cima, operacoes embaixo
+        float paramsUsed = rowY - dividerY - PARAMS_PADDING + PARAMS_PADDING * 2;
+        paramsBottom = dividerY + ((paramsUsed < BASE_SECTION_HEIGHT) ? BASE_SECTION_HEIGHT : paramsUsed);
+
+        DrawLine(arrayClass[i].bounds.x, paramsBottom,
+                 arrayClass[i].bounds.x + arrayClass[i].bounds.width, paramsBottom, colorClass);
+
+        rowY = paramsBottom + PARAMS_PADDING;
+
+        for (int m = 0; m < arrayClass[i].methodCount; m++)
+        {
+            char text[TEXT_BUFFER_LEN];
+            FormatMethod(&arrayClass[i].methods[m], text, sizeof(text));
+
+            int lines = GetWrappedText(text, PARAM_FONT_SIZE, GetTextMaxWidth(), display, sizeof(display));
+            Color rowColor = (i == selectedIndex && m == selectedMethod) ? ThemeAccent() : ThemeTextMuted();
 
             DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING, rowY, PARAM_FONT_SIZE, rowColor);
             rowY += lines * PARAM_LINE_HEIGHT;
@@ -721,6 +839,296 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
             DrawRectangleLinesEx(handle, 2, ThemeAccent());
         }
     }
+}
+
+
+
+// O painel da classe e dividido por entidade: cada aba concentra a lista e o
+// formulario do seu proprio item, em vez de tudo competir pela mesma coluna.
+static int classPanelTab = 0;
+
+static void DrawMemberTypeGrid(Rectangle block, float y, char *target, int capacity, int *cursor)
+{
+    float typeWidth = (block.width - PANEL_GAP * (TYPE_COLUMNS - 1)) / TYPE_COLUMNS;
+
+    for (int i = 0; i < PARAM_TYPE_COUNT; i++)
+    {
+        Rectangle rect = {block.x + (i % TYPE_COLUMNS) * (typeWidth + PANEL_GAP),
+                          y + (i / TYPE_COLUMNS) * (PANEL_ROW_HEIGHT + PANEL_GAP),
+                          typeWidth, PANEL_ROW_HEIGHT};
+
+        if (PanelButton(rect, paramTypes[i], strcmp(target, paramTypes[i]) == 0, ThemeAccent(), 11, cursor))
+        {
+            PushHistory();
+            snprintf(target, capacity, "%s", paramTypes[i]);
+        }
+    }
+}
+
+static void DrawVisibilityRow(Rectangle block, float y, char *visibility, int *cursor)
+{
+    float width = (block.width - PANEL_GAP * 2) / 3.0f;
+
+    for (int i = 0; i < 3; i++)
+    {
+        Rectangle rect = {block.x + i * (width + PANEL_GAP), y, width, PANEL_ROW_HEIGHT};
+
+        if (PanelButton(rect, visibilityLabels[i], *visibility == visibilityChars[i], ThemeAccent(), 12, cursor))
+        {
+            PushHistory();
+            *visibility = visibilityChars[i];
+        }
+    }
+}
+
+// Cabecalho e botao de adicionar, comuns as abas de atributo e metodo
+static float DrawListHeader(Rectangle area, float y, const char *label, bool canAdd,
+                            int *cursor, void (*onAdd)(int), int classIndex)
+{
+    DrawUiText(label, area.x, y, 12, ThemeAccent());
+
+    Rectangle addBtn = {area.x + area.width - 96, y - 6, 96, PANEL_ROW_HEIGHT};
+
+    if (canAdd)
+    {
+        if (PanelButton(addBtn, "+ Adicionar", false, ThemeAccent(), 12, cursor))
+        {
+            PushHistory();
+            onAdd(classIndex);
+        }
+    }
+    else
+    {
+        DrawUiText("limite atingido", addBtn.x, addBtn.y + 5, 11, ThemeDanger());
+    }
+
+    return y + PANEL_ROW_HEIGHT + PANEL_GAP;
+}
+
+static void DrawClassTab(Rectangle area, UMLClass *cls, int *cursor)
+{
+    float y = area.y;
+
+    PanelLabel("Nome da classe", area.x, y);
+    y += 18;
+
+    if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, cls->name,
+                   panelFocus == FOCUS_CLASS_NAME, cursor))
+    {
+        if (panelFocus != FOCUS_CLASS_NAME) PushHistory();
+        panelFocus = FOCUS_CLASS_NAME;
+    }
+    y += PANEL_FIELD_HEIGHT + 8;
+
+    if (cls->name[0] == '\0')
+    {
+        DrawUiText("A classe precisa de um nome", area.x, y, 12, ThemeDanger());
+    }
+    y += 26;
+
+    char summary[96];
+    snprintf(summary, sizeof(summary), "%d atributo(s) e %d metodo(s)", cls->paramCount, cls->methodCount);
+    DrawUiText(summary, area.x, y, 12, ThemeTextMuted());
+}
+
+static void DrawParamsTab(Rectangle area, UMLClass *cls, int *cursor)
+{
+    float y = area.y;
+
+    y = DrawListHeader(area, y, "ATRIBUTOS", cls->paramCount < MAX_PARAMS, cursor, AddParam, selectedIndex);
+
+    for (int i = 0; i < cls->paramCount; i++)
+    {
+        Rectangle row = {area.x, y, area.width - 52, PANEL_ROW_HEIGHT};
+        Rectangle copyBtn = {area.x + area.width - 50, y, 24, PANEL_ROW_HEIGHT};
+        Rectangle removeBtn = {area.x + area.width - 24, y, 24, PANEL_ROW_HEIGHT};
+
+        char text[TEXT_BUFFER_LEN];
+        FormatParam(&cls->params[i], text, sizeof(text));
+
+        bool selected = (i == selectedParam);
+        bool hover = CheckCollisionPointRec(GetMousePosition(), row);
+        if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
+
+        DrawRectangleRec(row, selected ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
+        DrawRectangleLinesEx(row, 1, selected ? ThemeAccent() : ThemeBorder());
+        DrawUiText(text, row.x + 6, row.y + 5, 12, ThemeText());
+
+        if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            if (selectedParam != i) PushHistory();
+            selectedParam = i;
+            panelFocus = FOCUS_PARAM_NAME;
+        }
+
+        if (PanelButton(copyBtn, "++", false, ThemeAccent(), 11, cursor))
+        {
+            PushHistory();
+            DuplicateParam(selectedIndex, i);
+            return;
+        }
+
+        if (PanelButton(removeBtn, "x", false, ThemeDanger(), 12, cursor))
+        {
+            PushHistory();
+            RemoveParam(selectedIndex, i);
+            return;
+        }
+
+        y += PANEL_ROW_HEIGHT + 4;
+    }
+
+    if (selectedParam == -1 || selectedParam >= cls->paramCount) return;
+
+    UMLParam *param = &cls->params[selectedParam];
+    Rectangle block = {area.x + BLOCK_INDENT, area.y, area.width - BLOCK_INDENT, area.height};
+
+    y += SECTION_SPACING;
+    DrawLine(area.x, y, area.x + area.width, y, ThemeBorder());
+    y += 18;
+
+    char header[96];
+    snprintf(header, sizeof(header), "EDITANDO: %s", param->name);
+    DrawUiText(header, area.x, y, 12, ThemeAccent());
+    y += 26;
+
+    float blockStart = y - 10;
+
+    PanelLabel("Visibilidade", block.x, y);
+    y += 18;
+    DrawVisibilityRow(block, y, &param->visibility, cursor);
+    y += PANEL_ROW_HEIGHT + 16;
+
+    PanelLabel("Nome", block.x, y);
+    y += 18;
+    if (PanelField((Rectangle){block.x, y, block.width, PANEL_FIELD_HEIGHT}, param->name,
+                   panelFocus == FOCUS_PARAM_NAME, cursor))
+    {
+        if (panelFocus != FOCUS_PARAM_NAME) PushHistory();
+        panelFocus = FOCUS_PARAM_NAME;
+    }
+    y += PANEL_FIELD_HEIGHT + 16;
+
+    PanelLabel("Tipo", block.x, y);
+    y += 18;
+    if (PanelField((Rectangle){block.x, y, block.width, PANEL_FIELD_HEIGHT}, param->type,
+                   panelFocus == FOCUS_PARAM_TYPE, cursor))
+    {
+        if (panelFocus != FOCUS_PARAM_TYPE) PushHistory();
+        panelFocus = FOCUS_PARAM_TYPE;
+    }
+    y += PANEL_FIELD_HEIGHT + PANEL_GAP;
+
+    DrawMemberTypeGrid(block, y, param->type, PARAM_TYPE_LEN, cursor);
+
+    int rows = (PARAM_TYPE_COUNT + TYPE_COLUMNS - 1) / TYPE_COLUMNS;
+    DrawRectangle(area.x, blockStart, 3, y + rows * (PANEL_ROW_HEIGHT + PANEL_GAP) - blockStart,
+                  Fade(ThemeAccent(), 0.55f));
+}
+
+static void DrawMethodsTab(Rectangle area, UMLClass *cls, int *cursor)
+{
+    float y = area.y;
+
+    y = DrawListHeader(area, y, "METODOS", cls->methodCount < MAX_METHODS, cursor, AddMethod, selectedIndex);
+
+    for (int i = 0; i < cls->methodCount; i++)
+    {
+        Rectangle row = {area.x, y, area.width - 52, PANEL_ROW_HEIGHT};
+        Rectangle copyBtn = {area.x + area.width - 50, y, 24, PANEL_ROW_HEIGHT};
+        Rectangle removeBtn = {area.x + area.width - 24, y, 24, PANEL_ROW_HEIGHT};
+
+        char text[TEXT_BUFFER_LEN];
+        FormatMethod(&cls->methods[i], text, sizeof(text));
+
+        bool selected = (i == selectedMethod);
+        bool hover = CheckCollisionPointRec(GetMousePosition(), row);
+        if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
+
+        DrawRectangleRec(row, selected ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
+        DrawRectangleLinesEx(row, 1, selected ? ThemeAccent() : ThemeBorder());
+        DrawUiText(text, row.x + 6, row.y + 5, 12, ThemeText());
+
+        if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            if (selectedMethod != i) PushHistory();
+            selectedMethod = i;
+            panelFocus = FOCUS_METHOD_NAME;
+        }
+
+        if (PanelButton(copyBtn, "++", false, ThemeAccent(), 11, cursor))
+        {
+            PushHistory();
+            DuplicateMethod(selectedIndex, i);
+            return;
+        }
+
+        if (PanelButton(removeBtn, "x", false, ThemeDanger(), 12, cursor))
+        {
+            PushHistory();
+            RemoveMethod(selectedIndex, i);
+            return;
+        }
+
+        y += PANEL_ROW_HEIGHT + 4;
+    }
+
+    if (selectedMethod == -1 || selectedMethod >= cls->methodCount) return;
+
+    UMLMethod *method = &cls->methods[selectedMethod];
+    Rectangle block = {area.x + BLOCK_INDENT, area.y, area.width - BLOCK_INDENT, area.height};
+
+    y += SECTION_SPACING;
+    DrawLine(area.x, y, area.x + area.width, y, ThemeBorder());
+    y += 18;
+
+    char header[96];
+    snprintf(header, sizeof(header), "EDITANDO: %s", method->name);
+    DrawUiText(header, area.x, y, 12, ThemeAccent());
+    y += 26;
+
+    float blockStart = y - 10;
+
+    PanelLabel("Visibilidade", block.x, y);
+    y += 18;
+    DrawVisibilityRow(block, y, &method->visibility, cursor);
+    y += PANEL_ROW_HEIGHT + 16;
+
+    PanelLabel("Nome", block.x, y);
+    y += 18;
+    if (PanelField((Rectangle){block.x, y, block.width, PANEL_FIELD_HEIGHT}, method->name,
+                   panelFocus == FOCUS_METHOD_NAME, cursor))
+    {
+        if (panelFocus != FOCUS_METHOD_NAME) PushHistory();
+        panelFocus = FOCUS_METHOD_NAME;
+    }
+    y += PANEL_FIELD_HEIGHT + 16;
+
+    PanelLabel("Argumentos (ex: valor: double)", block.x, y);
+    y += 18;
+    if (PanelField((Rectangle){block.x, y, block.width, PANEL_FIELD_HEIGHT}, method->args,
+                   panelFocus == FOCUS_METHOD_ARGS, cursor))
+    {
+        if (panelFocus != FOCUS_METHOD_ARGS) PushHistory();
+        panelFocus = FOCUS_METHOD_ARGS;
+    }
+    y += PANEL_FIELD_HEIGHT + 16;
+
+    PanelLabel("Retorno", block.x, y);
+    y += 18;
+    if (PanelField((Rectangle){block.x, y, block.width, PANEL_FIELD_HEIGHT}, method->returnType,
+                   panelFocus == FOCUS_METHOD_TYPE, cursor))
+    {
+        if (panelFocus != FOCUS_METHOD_TYPE) PushHistory();
+        panelFocus = FOCUS_METHOD_TYPE;
+    }
+    y += PANEL_FIELD_HEIGHT + PANEL_GAP;
+
+    DrawMemberTypeGrid(block, y, method->returnType, METHOD_TYPE_LEN, cursor);
+
+    int rows = (PARAM_TYPE_COUNT + TYPE_COLUMNS - 1) / TYPE_COLUMNS;
+    DrawRectangle(area.x, blockStart, 3, y + rows * (PANEL_ROW_HEIGHT + PANEL_GAP) - blockStart,
+                  Fade(ThemeAccent(), 0.55f));
 }
 
 void DrawClassProperties(Rectangle area, int *cursor)
@@ -753,139 +1161,29 @@ void DrawClassProperties(Rectangle area, int *cursor)
     }
 
     UMLClass *cls = &arrayClass[selectedIndex];
-    float y = area.y;
 
     if (IsFileFieldFocused()) panelFocus = FOCUS_NONE;
 
     if (panelFocus == FOCUS_CLASS_NAME) AppendTypedChars(cls->name, CLASS_NAME_LEN);
     else if (panelFocus == FOCUS_PARAM_NAME && selectedParam != -1) AppendTypedChars(cls->params[selectedParam].name, PARAM_NAME_LEN);
     else if (panelFocus == FOCUS_PARAM_TYPE && selectedParam != -1) AppendTypedChars(cls->params[selectedParam].type, PARAM_TYPE_LEN);
+    else if (panelFocus == FOCUS_METHOD_NAME && selectedMethod != -1) AppendTypedChars(cls->methods[selectedMethod].name, METHOD_NAME_LEN);
+    else if (panelFocus == FOCUS_METHOD_ARGS && selectedMethod != -1) AppendTypedChars(cls->methods[selectedMethod].args, METHOD_ARGS_LEN);
+    else if (panelFocus == FOCUS_METHOD_TYPE && selectedMethod != -1) AppendTypedChars(cls->methods[selectedMethod].returnType, METHOD_TYPE_LEN);
 
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) panelFocus = FOCUS_NONE;
 
-    PanelLabel("Nome da classe", area.x, y);
-    y += 18;
+    // Classe sem nome prende o painel na aba onde o nome se edita
+    if (cls->name[0] == '\0') classPanelTab = 0;
 
-    if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, cls->name, panelFocus == FOCUS_CLASS_NAME, cursor))
-    {
-        // Retrato ao entrar no campo: um Ctrl+Z desfaz a edicao inteira do
-        // texto, em vez de uma letra por vez
-        if (panelFocus != FOCUS_CLASS_NAME) PushHistory();
-        panelFocus = FOCUS_CLASS_NAME;
-    }
-    y += PANEL_FIELD_HEIGHT;
+    const char *tabNames[] = {"Classe", "Atributos", "Metodos"};
+    classPanelTab = PanelTabs((Rectangle){area.x, area.y, area.width, 24}, tabNames, 3, classPanelTab, cursor);
 
-    if (cls->name[0] == '\0')
-    {
-        DrawUiText("A classe precisa de um nome", area.x, y + 4, 12, ThemeDanger());
-    }
-    y += 22;
+    Rectangle content = {area.x, area.y + 24 + SECTION_SPACING, area.width, area.height - 24 - SECTION_SPACING - 40};
 
-    PanelLabel("Parametros", area.x, y + 6);
-
-    Rectangle addBtn = {area.x + area.width - 90, y, 90, PANEL_ROW_HEIGHT};
-    if (cls->paramCount < MAX_PARAMS)
-    {
-        if (PanelButton(addBtn, "+ Adicionar", false, ThemeAccent(), 12, cursor))
-        {
-            PushHistory();
-            AddParam(selectedIndex);
-        }
-    }
-    else
-    {
-        DrawUiText("limite atingido", addBtn.x, addBtn.y + 5, 11, ThemeDanger());
-    }
-    y += PANEL_ROW_HEIGHT + PANEL_GAP;
-
-    for (int i = 0; i < cls->paramCount; i++)
-    {
-        Rectangle row = {area.x, y, area.width - 26, PANEL_ROW_HEIGHT};
-        Rectangle removeBtn = {area.x + area.width - 22, y, 22, PANEL_ROW_HEIGHT};
-
-        char text[TEXT_BUFFER_LEN];
-        FormatParam(&cls->params[i], text, sizeof(text));
-
-        bool isSelectedParam = (i == selectedParam);
-        bool hover = CheckCollisionPointRec(GetMousePosition(), row);
-        if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
-
-        DrawRectangleRec(row, isSelectedParam ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
-        DrawRectangleLinesEx(row, 1, isSelectedParam ? ThemeAccent() : ThemeBorder());
-        DrawUiText(text, row.x + 6, row.y + 5, 12, ThemeText());
-
-        if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-        {
-            if (selectedParam != i || panelFocus != FOCUS_PARAM_NAME) PushHistory();
-            selectedParam = i;
-            panelFocus = FOCUS_PARAM_NAME;
-        }
-
-        if (PanelButton(removeBtn, "x", false, ThemeDanger(), 12, cursor))
-        {
-            PushHistory();
-            RemoveParam(selectedIndex, i);
-            return;
-        }
-
-        y += PANEL_ROW_HEIGHT + 4;
-    }
-
-    if (selectedParam != -1 && selectedParam < cls->paramCount)
-    {
-        UMLParam *param = &cls->params[selectedParam];
-
-        y += 10;
-        DrawLine(area.x, y, area.x + area.width, y, ThemeBorder());
-        y += 12;
-
-        PanelLabel("Visibilidade", area.x, y);
-        y += 18;
-
-        float visWidth = (area.width - PANEL_GAP * 2) / 3.0f;
-        for (int i = 0; i < 3; i++)
-        {
-            Rectangle rect = {area.x + i * (visWidth + PANEL_GAP), y, visWidth, PANEL_ROW_HEIGHT};
-            if (PanelButton(rect, visibilityLabels[i], param->visibility == visibilityChars[i], ThemeAccent(), 12, cursor))
-            {
-                PushHistory();
-                param->visibility = visibilityChars[i];
-            }
-        }
-        y += PANEL_ROW_HEIGHT + 12;
-
-        PanelLabel("Nome", area.x, y);
-        y += 18;
-        if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, param->name, panelFocus == FOCUS_PARAM_NAME, cursor))
-        {
-            if (panelFocus != FOCUS_PARAM_NAME) PushHistory();
-            panelFocus = FOCUS_PARAM_NAME;
-        }
-        y += PANEL_FIELD_HEIGHT + 12;
-
-        PanelLabel("Tipo", area.x, y);
-        y += 18;
-        if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, param->type, panelFocus == FOCUS_PARAM_TYPE, cursor))
-        {
-            if (panelFocus != FOCUS_PARAM_TYPE) PushHistory();
-            panelFocus = FOCUS_PARAM_TYPE;
-        }
-        y += PANEL_FIELD_HEIGHT + PANEL_GAP;
-
-        float typeWidth = (area.width - PANEL_GAP * (TYPE_COLUMNS - 1)) / TYPE_COLUMNS;
-        for (int i = 0; i < PARAM_TYPE_COUNT; i++)
-        {
-            Rectangle rect = {area.x + (i % TYPE_COLUMNS) * (typeWidth + PANEL_GAP),
-                              y + (i / TYPE_COLUMNS) * (PANEL_ROW_HEIGHT + PANEL_GAP),
-                              typeWidth, PANEL_ROW_HEIGHT};
-
-            if (PanelButton(rect, paramTypes[i], strcmp(param->type, paramTypes[i]) == 0, ThemeAccent(), 11, cursor))
-            {
-                PushHistory();
-                snprintf(param->type, PARAM_TYPE_LEN, "%s", paramTypes[i]);
-            }
-        }
-    }
+    if (classPanelTab == 0) DrawClassTab(content, cls, cursor);
+    else if (classPanelTab == 1) DrawParamsTab(content, cls, cursor);
+    else DrawMethodsTab(content, cls, cursor);
 
     float buttonsY = area.y + area.height - 30;
     float buttonWidth = (area.width - PANEL_GAP) / 2.0f;
@@ -897,7 +1195,8 @@ void DrawClassProperties(Rectangle area, int *cursor)
         return;
     }
 
-    if (PanelButton((Rectangle){area.x + buttonWidth + PANEL_GAP, buttonsY, buttonWidth, 28}, "Excluir", false, ThemeDanger(), 13, cursor))
+    if (PanelButton((Rectangle){area.x + buttonWidth + PANEL_GAP, buttonsY, buttonWidth, 28},
+                    "Excluir", false, ThemeDanger(), 13, cursor))
     {
         PushHistory();
         RemoveUMLClass(selectedIndex);
