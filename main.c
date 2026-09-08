@@ -6,6 +6,7 @@
 #include "src/include/uifont.h"
 #include "src/include/storage.h"
 #include "src/include/history.h"
+#include "src/include/theme.h"
 #include <math.h>
 
 int main(void) {
@@ -84,11 +85,11 @@ int main(void) {
         }
 
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground(ThemeCanvas());
             
             BeginMode2D(camera);
                 
-                DrawWorldGrid(10000, 50.0f, LIGHTGRAY);
+                DrawWorldGrid(10000, WORLD_GRID_SPACING, ThemeGrid());
                 UpdateAndDrawRelations(camera, &frameCursor);
                 UpdateAndDrawBoxes(camera, &frameCursor);
 

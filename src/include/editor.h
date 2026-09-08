@@ -45,6 +45,10 @@ void DrawClassProperties(Rectangle area, int *cursor);
 // Ha uma classe sem nome: o resto do programa fica bloqueado ate preencher
 bool IsClassNameRequired(void);
 
+// Alinhamento a grade ao arrastar e redimensionar
+void ToggleSnapToGrid(void);
+bool IsSnapToGridEnabled(void);
+
 int GetClassCount(void);
 int GetClassIdByIndex(int index);
 int FindClassIndexById(int id);

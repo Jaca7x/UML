@@ -4,9 +4,12 @@
 #include "../include/uifont.h"
 #include "../include/widgets.h"
 #include "../include/history.h"
+#include "../include/theme.h"
+#include "../include/renderer.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #define NAME_FONT_SIZE   16
 #define NAME_PADDING     10
@@ -53,6 +56,25 @@ static int nextClassId = 1;
 static int selectedIndex = -1;
 static int selectedParam = -1;
 static PanelFocus panelFocus = FOCUS_NONE;
+
+static bool snapToGrid = true;
+
+void ToggleSnapToGrid(void)
+{
+    snapToGrid = !snapToGrid;
+}
+
+bool IsSnapToGridEnabled(void)
+{
+    return snapToGrid;
+}
+
+static float SnapValue(float value)
+{
+    if (!snapToGrid) return value;
+
+    return roundf(value / WORLD_GRID_SPACING) * WORLD_GRID_SPACING;
+}
 
 static int resizingIndex = -1;
 static int resizingHandle = -1;
@@ -221,8 +243,8 @@ static void AddUMLClass(Vector2 position)
     UMLClass *newClass = &arrayClass[clickCount - 1];
     newClass->bounds.width = BASE_BOX_WIDTH;
     newClass->bounds.height = BASE_PARAMS_HEIGHT;
-    newClass->bounds.x = position.x - newClass->bounds.width / 2.0f;
-    newClass->bounds.y = position.y - newClass->bounds.height / 2.0f;
+    newClass->bounds.x = SnapValue(position.x - newClass->bounds.width / 2.0f);
+    newClass->bounds.y = SnapValue(position.y - newClass->bounds.height / 2.0f);
 
     newClass->id = nextClassId++;
     newClass->isDragging = false;
@@ -414,23 +436,23 @@ static void ApplyResize(Vector2 mousePos)
 
     if (resizingHandle == 0 || resizingHandle == 3)
     {
-        left += dx;
+        left = SnapValue(left + dx);
         if (right - left < contentWidth) left = right - contentWidth;
     }
     else
     {
-        right += dx;
+        right = SnapValue(right + dx);
         if (right - left < contentWidth) right = left + contentWidth;
     }
 
     if (resizingHandle == 0 || resizingHandle == 1)
     {
-        top += dy;
+        top = SnapValue(top + dy);
         if (bottom - top < contentHeight) top = bottom - contentHeight;
     }
     else
     {
-        bottom += dy;
+        bottom = SnapValue(bottom + dy);
         if (bottom - top < contentHeight) bottom = top + contentHeight;
     }
 
@@ -537,14 +559,14 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
     }
 
     for (int i = 0; i < clickCount; i++) {
-        Color colorClass = (i == selectedIndex) ? BLUE : BLACK;
+        Color colorClass = (i == selectedIndex) ? ThemeAccent() : ThemeBorder();
 
         if (arrayClass[i].isDragging)
         {
             *cursor = MOUSE_CURSOR_RESIZE_ALL;
 
-            arrayClass[i].bounds.x = mousePos.x - arrayClass[i].dragOffSet.x;
-            arrayClass[i].bounds.y = mousePos.y - arrayClass[i].dragOffSet.y;
+            arrayClass[i].bounds.x = SnapValue(mousePos.x - arrayClass[i].dragOffSet.x);
+            arrayClass[i].bounds.y = SnapValue(mousePos.y - arrayClass[i].dragOffSet.y);
         }
 
 
@@ -553,7 +575,7 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         float dividerY = arrayClass[i].bounds.y + GetNameSectionHeight(nameLines);
 
         DrawRectangleLinesEx(arrayClass[i].bounds, 2, colorClass);
-        DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING, arrayClass[i].bounds.y + NAME_PADDING, NAME_FONT_SIZE, BLACK);
+        DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING, arrayClass[i].bounds.y + NAME_PADDING, NAME_FONT_SIZE, ThemeText());
         DrawLine(arrayClass[i].bounds.x, dividerY, arrayClass[i].bounds.x + arrayClass[i].bounds.width, dividerY, colorClass);
 
         float rowY = dividerY + PARAMS_PADDING;
@@ -564,7 +586,7 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
             FormatParam(&arrayClass[i].params[p], text, sizeof(text));
 
             int lines = GetWrappedText(text, PARAM_FONT_SIZE, GetTextMaxWidth(), display, sizeof(display));
-            Color rowColor = (i == selectedIndex && p == selectedParam) ? BLUE : DARKGRAY;
+            Color rowColor = (i == selectedIndex && p == selectedParam) ? ThemeAccent() : ThemeTextMuted();
 
             DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING, rowY, PARAM_FONT_SIZE, rowColor);
             rowY += lines * PARAM_LINE_HEIGHT;
@@ -581,8 +603,8 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         for (int corner = 0; corner < 4; corner++)
         {
             Rectangle handle = GetResizeHandle(arrayClass[selectedIndex].bounds, corner);
-            DrawRectangleRec(handle, RAYWHITE);
-            DrawRectangleLinesEx(handle, 2, BLUE);
+            DrawRectangleRec(handle, ThemeSurface());
+            DrawRectangleLinesEx(handle, 2, ThemeAccent());
         }
     }
 }
@@ -614,7 +636,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
 
     if (cls->name[0] == '\0')
     {
-        DrawUiText("A classe precisa de um nome", area.x, y + 4, 12, RED);
+        DrawUiText("A classe precisa de um nome", area.x, y + 4, 12, ThemeDanger());
     }
     y += 22;
 
@@ -623,7 +645,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
     Rectangle addBtn = {area.x + area.width - 90, y, 90, PANEL_ROW_HEIGHT};
     if (cls->paramCount < MAX_PARAMS)
     {
-        if (PanelButton(addBtn, "+ Adicionar", false, BLUE, 12, cursor))
+        if (PanelButton(addBtn, "+ Adicionar", false, ThemeAccent(), 12, cursor))
         {
             PushHistory();
             AddParam(selectedIndex);
@@ -631,7 +653,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
     }
     else
     {
-        DrawUiText("limite atingido", addBtn.x, addBtn.y + 5, 11, RED);
+        DrawUiText("limite atingido", addBtn.x, addBtn.y + 5, 11, ThemeDanger());
     }
     y += PANEL_ROW_HEIGHT + PANEL_GAP;
 
@@ -647,9 +669,9 @@ void DrawClassProperties(Rectangle area, int *cursor)
         bool hover = CheckCollisionPointRec(GetMousePosition(), row);
         if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
 
-        DrawRectangleRec(row, isSelectedParam ? Fade(BLUE, 0.15f) : RAYWHITE);
-        DrawRectangleLinesEx(row, 1, isSelectedParam ? BLUE : GRAY);
-        DrawUiText(text, row.x + 6, row.y + 5, 12, BLACK);
+        DrawRectangleRec(row, isSelectedParam ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
+        DrawRectangleLinesEx(row, 1, isSelectedParam ? ThemeAccent() : ThemeBorder());
+        DrawUiText(text, row.x + 6, row.y + 5, 12, ThemeText());
 
         if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
@@ -658,7 +680,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
             panelFocus = FOCUS_PARAM_NAME;
         }
 
-        if (PanelButton(removeBtn, "x", false, RED, 12, cursor))
+        if (PanelButton(removeBtn, "x", false, ThemeDanger(), 12, cursor))
         {
             PushHistory();
             RemoveParam(selectedIndex, i);
@@ -673,7 +695,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
         UMLParam *param = &cls->params[selectedParam];
 
         y += 10;
-        DrawLine(area.x, y, area.x + area.width, y, GRAY);
+        DrawLine(area.x, y, area.x + area.width, y, ThemeBorder());
         y += 12;
 
         PanelLabel("Visibilidade", area.x, y);
@@ -683,7 +705,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
         for (int i = 0; i < 3; i++)
         {
             Rectangle rect = {area.x + i * (visWidth + PANEL_GAP), y, visWidth, PANEL_ROW_HEIGHT};
-            if (PanelButton(rect, visibilityLabels[i], param->visibility == visibilityChars[i], BLUE, 12, cursor))
+            if (PanelButton(rect, visibilityLabels[i], param->visibility == visibilityChars[i], ThemeAccent(), 12, cursor))
             {
                 PushHistory();
                 param->visibility = visibilityChars[i];
@@ -716,7 +738,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
                               y + (i / TYPE_COLUMNS) * (PANEL_ROW_HEIGHT + PANEL_GAP),
                               typeWidth, PANEL_ROW_HEIGHT};
 
-            if (PanelButton(rect, paramTypes[i], strcmp(param->type, paramTypes[i]) == 0, BLUE, 11, cursor))
+            if (PanelButton(rect, paramTypes[i], strcmp(param->type, paramTypes[i]) == 0, ThemeAccent(), 11, cursor))
             {
                 PushHistory();
                 snprintf(param->type, PARAM_TYPE_LEN, "%s", paramTypes[i]);
@@ -727,14 +749,14 @@ void DrawClassProperties(Rectangle area, int *cursor)
     float buttonsY = area.y + area.height - 30;
     float buttonWidth = (area.width - PANEL_GAP) / 2.0f;
 
-    if (PanelButton((Rectangle){area.x, buttonsY, buttonWidth, 28}, "Duplicar", false, BLUE, 13, cursor))
+    if (PanelButton((Rectangle){area.x, buttonsY, buttonWidth, 28}, "Duplicar", false, ThemeAccent(), 13, cursor))
     {
         PushHistory();
         DuplicateUMLClass(selectedIndex);
         return;
     }
 
-    if (PanelButton((Rectangle){area.x + buttonWidth + PANEL_GAP, buttonsY, buttonWidth, 28}, "Excluir", false, RED, 13, cursor))
+    if (PanelButton((Rectangle){area.x + buttonWidth + PANEL_GAP, buttonsY, buttonWidth, 28}, "Excluir", false, ThemeDanger(), 13, cursor))
     {
         PushHistory();
         RemoveUMLClass(selectedIndex);
