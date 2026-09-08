@@ -26,6 +26,7 @@ UML/
 │   ├── include/             # Headers públicos dos módulos (.h)
 │   │   ├── editor.h          # UMLClass, UMLParam e API das classes
 │   │   ├── relations.h       # UMLRelation, RelationType e API dos relacionamentos
+│   │   ├── storage.h         # Salvar e carregar o diagrama em arquivo
 │   │   ├── renderer.h        # Desenho do mundo (grid)
 │   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
 │   │   ├── uifont.h          # Carregamento e desenho de texto
@@ -111,6 +112,29 @@ irregular em qualquer tamanho que não seja múltiplo dela. O módulo carrega
 **um atlas por tamanho usado** (12, 14, 16) e desenha sempre no tamanho do
 atlas, mantendo a escala em 1:1 — escalar a textura é o que borra o texto.
 
+### `storage` (`storage.h` / `storage.c`)
+
+Grava e lê o diagrama em um formato de texto próprio, uma linha por elemento:
+
+```
+# RayUML 1
+class <id> <x> <y> <userWidth> <userHeight> "<nome>"
+param <visibilidade> "<nome>" "<tipo>"
+relation <origem> <destino> <tipo> "<mult origem>" "<mult destino>"
+```
+
+Os `param` pertencem sempre à última `class` lida. O que o usuário digita vai
+entre aspas, porque nome e tipo aceitam espaço.
+
+**Por que formato próprio e não PlantUML:** PlantUML descreve a estrutura mas
+não guarda coordenadas nem tamanho das caixas. Salvar nele perderia todo o
+layout ao reabrir. PlantUML continua bom como exportação — só não serve para
+salvar.
+
+**Tipo do relacionamento é gravado por nome** (`composicao`, `heranca`, ...),
+não pelo valor numérico do enum: reordenar os tipos invalidaria os arquivos
+já salvos.
+
 ### `renderer` (`renderer.h` / `renderer.c`)
 
 Desenho de mundo que não é estado do diagrama — hoje, o grid de fundo.
@@ -142,8 +166,9 @@ cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 - [x] Parâmetros com visibilidade, nome e tipo
 - [x] Relacionamentos com multiplicidade
 - [x] Painel de propriedades com edição ao vivo
-- [ ] Persistir/serializar o diagrama (salvar/carregar)
+- [x] Salvar e carregar o diagrama
 - [ ] Exportar o diagrama como imagem
+- [ ] Exportar para PlantUML
 - [ ] Métodos da classe (terceiro compartimento; o campo `methods` já existe
       na struct mas não é usado)
 - [ ] Desfazer/refazer

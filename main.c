@@ -4,6 +4,7 @@
 #include "src/include/relations.h"
 #include "src/include/ui.h"
 #include "src/include/uifont.h"
+#include "src/include/storage.h"
 #include <math.h>
 
 int main(void) {
@@ -40,6 +41,19 @@ int main(void) {
         if (IsKeyPressed(KEY_ENTER) && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)))
         {
             ToggleFullscreenMode();
+        }
+
+        if (IsFileDropped())
+        {
+            FilePathList dropped = LoadDroppedFiles();
+
+            if (dropped.count > 0)
+            {
+                bool loaded = LoadDiagram(dropped.paths[0]);
+                ShowUiStatus(loaded ? "Diagrama carregado" : "Arquivo invalido", loaded);
+            }
+
+            UnloadDroppedFiles(dropped);
         }
 
         BeginDrawing();
