@@ -5,9 +5,11 @@
 #include "../include/widgets.h"
 #include "../include/history.h"
 #include "../include/theme.h"
+#include "../include/renderer.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #define NAME_FONT_SIZE   16
 #define NAME_PADDING     10
@@ -54,6 +56,25 @@ static int nextClassId = 1;
 static int selectedIndex = -1;
 static int selectedParam = -1;
 static PanelFocus panelFocus = FOCUS_NONE;
+
+static bool snapToGrid = true;
+
+void ToggleSnapToGrid(void)
+{
+    snapToGrid = !snapToGrid;
+}
+
+bool IsSnapToGridEnabled(void)
+{
+    return snapToGrid;
+}
+
+static float SnapValue(float value)
+{
+    if (!snapToGrid) return value;
+
+    return roundf(value / WORLD_GRID_SPACING) * WORLD_GRID_SPACING;
+}
 
 static int resizingIndex = -1;
 static int resizingHandle = -1;
@@ -222,8 +243,8 @@ static void AddUMLClass(Vector2 position)
     UMLClass *newClass = &arrayClass[clickCount - 1];
     newClass->bounds.width = BASE_BOX_WIDTH;
     newClass->bounds.height = BASE_PARAMS_HEIGHT;
-    newClass->bounds.x = position.x - newClass->bounds.width / 2.0f;
-    newClass->bounds.y = position.y - newClass->bounds.height / 2.0f;
+    newClass->bounds.x = SnapValue(position.x - newClass->bounds.width / 2.0f);
+    newClass->bounds.y = SnapValue(position.y - newClass->bounds.height / 2.0f);
 
     newClass->id = nextClassId++;
     newClass->isDragging = false;
@@ -415,23 +436,23 @@ static void ApplyResize(Vector2 mousePos)
 
     if (resizingHandle == 0 || resizingHandle == 3)
     {
-        left += dx;
+        left = SnapValue(left + dx);
         if (right - left < contentWidth) left = right - contentWidth;
     }
     else
     {
-        right += dx;
+        right = SnapValue(right + dx);
         if (right - left < contentWidth) right = left + contentWidth;
     }
 
     if (resizingHandle == 0 || resizingHandle == 1)
     {
-        top += dy;
+        top = SnapValue(top + dy);
         if (bottom - top < contentHeight) top = bottom - contentHeight;
     }
     else
     {
-        bottom += dy;
+        bottom = SnapValue(bottom + dy);
         if (bottom - top < contentHeight) bottom = top + contentHeight;
     }
 
@@ -544,8 +565,8 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         {
             *cursor = MOUSE_CURSOR_RESIZE_ALL;
 
-            arrayClass[i].bounds.x = mousePos.x - arrayClass[i].dragOffSet.x;
-            arrayClass[i].bounds.y = mousePos.y - arrayClass[i].dragOffSet.y;
+            arrayClass[i].bounds.x = SnapValue(mousePos.x - arrayClass[i].dragOffSet.x);
+            arrayClass[i].bounds.y = SnapValue(mousePos.y - arrayClass[i].dragOffSet.y);
         }
 
 
