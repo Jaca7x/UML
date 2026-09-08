@@ -89,7 +89,7 @@ int main(void) {
             
             BeginMode2D(camera);
                 
-                DrawWorldGrid(10000, 50.0f, ThemeGrid());
+                DrawWorldGrid(10000, WORLD_GRID_SPACING, ThemeGrid());
                 UpdateAndDrawRelations(camera, &frameCursor);
                 UpdateAndDrawBoxes(camera, &frameCursor);
 

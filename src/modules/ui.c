@@ -8,10 +8,10 @@
 
 #define MENU_BAR_HEIGHT 50
 #define BUTTON_PADDING   10
-#define BUTTON_WIDTH    120
+#define BUTTON_WIDTH    105
 #define BUTTON_HEIGHT    30
 #define BUTTON_GAP        8
-#define MENU_BUTTON_COUNT 6
+#define MENU_BUTTON_COUNT 7
 
 #define STATUS_DURATION 2.5
 #define STATUS_LEN       96
@@ -126,6 +126,7 @@ void DrawUi(int *cursor) {
     DrawMenuButton(GetButtonBounds(3), "Carregar", false, cursor, LoadFromDefaultFile);
     DrawMenuButton(GetButtonBounds(4), "Tela Cheia", IsWindowFullscreen(), cursor, ToggleFullscreenMode);
     DrawMenuButton(GetButtonBounds(5), IsDarkMode() ? "Tema Claro" : "Tema Escuro", IsDarkMode(), cursor, ToggleTheme);
+    DrawMenuButton(GetButtonBounds(6), "Alinhar", IsSnapToGridEnabled(), cursor, ToggleSnapToGrid);
 
     bool overButton = false;
     for (int i = 0; i < MENU_BUTTON_COUNT; i++)
