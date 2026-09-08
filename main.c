@@ -43,7 +43,11 @@ int main(void) {
         {
             Vector2 worldPos = GetScreenToWorld2D(GetMousePosition(), camera);
 
-            draggingCanvas = !IsMouseOverUi()
+            // Com Shift o arrasto no vazio pertence ao laco de selecao do editor
+            bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+
+            draggingCanvas = !shiftDown
+                          && !IsMouseOverUi()
                           && !IsClassNameRequired()
                           && !IsPlacingClass()
                           && !IsRelationModeArmed()

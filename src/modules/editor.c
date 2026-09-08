@@ -57,6 +57,10 @@ static int selectedIndex = -1;
 static int selectedParam = -1;
 static PanelFocus panelFocus = FOCUS_NONE;
 
+// Laco de selecao (Shift + arrastar no vazio)
+static bool marqueeActive = false;
+static Vector2 marqueeStart = {0};
+
 static bool snapToGrid = true;
 
 void ToggleSnapToGrid(void)
@@ -81,8 +85,11 @@ static int resizingHandle = -1;
 static Rectangle resizeStartBounds = {0};
 static Vector2 resizeStartMouse = {0};
 
+static void DeselectAll(void);
+
 void ClearClassSelection(void)
 {
+    DeselectAll();
     selectedIndex = -1;
     selectedParam = -1;
     panelFocus = FOCUS_NONE;
@@ -123,6 +130,23 @@ static void FocusClassMissingName(void)
     ClearRelationSelection();
 }
 
+int GetSelectedClassCount(void)
+{
+    int total = 0;
+
+    for (int i = 0; i < clickCount; i++)
+    {
+        if (arrayClass[i].isSelected) total++;
+    }
+
+    return total;
+}
+
+static void DeselectAll(void)
+{
+    for (int i = 0; i < clickCount; i++) arrayClass[i].isSelected = false;
+}
+
 static void SelectClass(int index)
 {
     if (selectedIndex != index)
@@ -131,7 +155,33 @@ static void SelectClass(int index)
         panelFocus = FOCUS_NONE;
     }
 
+    DeselectAll();
+    arrayClass[index].isSelected = true;
     selectedIndex = index;
+    ClearRelationSelection();
+}
+
+// Ctrl+clique soma ou tira do grupo sem perder o resto da selecao
+static void ToggleClassInSelection(int index)
+{
+    arrayClass[index].isSelected = !arrayClass[index].isSelected;
+    selectedParam = -1;
+    panelFocus = FOCUS_NONE;
+
+    if (arrayClass[index].isSelected)
+    {
+        selectedIndex = index;
+    }
+    else if (selectedIndex == index)
+    {
+        selectedIndex = -1;
+
+        for (int i = 0; i < clickCount; i++)
+        {
+            if (arrayClass[i].isSelected) selectedIndex = i;
+        }
+    }
+
     ClearRelationSelection();
 }
 
@@ -211,6 +261,7 @@ int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth
     loaded->bounds = bounds;
     loaded->userWidth = userWidth;
     loaded->userHeight = userHeight;
+    loaded->isSelected = false;
     loaded->isDragging = false;
     loaded->paramCount = 0;
     loaded->methods[0] = '\0';
@@ -247,6 +298,7 @@ static void AddUMLClass(Vector2 position)
     newClass->bounds.y = SnapValue(position.y - newClass->bounds.height / 2.0f);
 
     newClass->id = nextClassId++;
+    newClass->isSelected = false;
     newClass->isDragging = false;
     newClass->userWidth = 0.0f;
     newClass->userHeight = 0.0f;
@@ -474,7 +526,7 @@ static bool HandleResize(Vector2 mousePos, int *cursor)
         return true;
     }
 
-    if (selectedIndex == -1) return false;
+    if (selectedIndex == -1 || GetSelectedClassCount() > 1) return false;
 
     for (int corner = 0; corner < 4; corner++)
     {
@@ -517,12 +569,48 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         && (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_DELETE)))
     {
         PushHistory();
-        RemoveUMLClass(selectedIndex);
+
+        for (int i = clickCount - 1; i >= 0; i--)
+        {
+            if (arrayClass[i].isSelected) RemoveUMLClass(i);
+        }
+
         ClearClassSelection();
         return;
     }
 
-    if (!blocked && !HandleResize(mousePos, cursor))
+    if (marqueeActive)
+    {
+        *cursor = MOUSE_CURSOR_CROSSHAIR;
+
+        Rectangle marquee = {
+            (mousePos.x < marqueeStart.x) ? mousePos.x : marqueeStart.x,
+            (mousePos.y < marqueeStart.y) ? mousePos.y : marqueeStart.y,
+            fabsf(mousePos.x - marqueeStart.x),
+            fabsf(mousePos.y - marqueeStart.y)
+        };
+
+        DrawRectangleRec(marquee, Fade(ThemeAccent(), 0.15f));
+        DrawRectangleLinesEx(marquee, 1, ThemeAccent());
+
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+        {
+            DeselectAll();
+            selectedIndex = -1;
+
+            for (int i = 0; i < clickCount; i++)
+            {
+                if (!CheckCollisionRecs(marquee, arrayClass[i].bounds)) continue;
+
+                arrayClass[i].isSelected = true;
+                selectedIndex = i;
+            }
+
+            if (selectedIndex != -1) ClearRelationSelection();
+            marqueeActive = false;
+        }
+    }
+    else if (!blocked && !HandleResize(mousePos, cursor))
     {
         if (isPlacingClass)
         {
@@ -540,26 +628,52 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
 
             if (hovered != -1) *cursor = MOUSE_CURSOR_POINTING_HAND;
 
+            bool ctrlDown = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+            bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+
             if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
             {
                 if (hovered == -1)
                 {
-                    ClearClassSelection();
+                    if (shiftDown)
+                    {
+                        marqueeActive = true;
+                        marqueeStart = mousePos;
+                    }
+                    else
+                    {
+                        ClearClassSelection();
+                    }
+                }
+                else if (ctrlDown)
+                {
+                    PushHistory();
+                    ToggleClassInSelection(hovered);
                 }
                 else
                 {
                     PushHistory();
-                    SelectClass(hovered);
-                    arrayClass[hovered].isDragging = true;
-                    arrayClass[hovered].dragOffSet.x = mousePos.x - arrayClass[hovered].bounds.x;
-                    arrayClass[hovered].dragOffSet.y = mousePos.y - arrayClass[hovered].bounds.y;
+
+                    // Clicar numa classe ja selecionada mantem o grupo: e assim
+                    // que se arrasta varias de uma vez
+                    if (!arrayClass[hovered].isSelected) SelectClass(hovered);
+                    else selectedIndex = hovered;
+
+                    for (int i = 0; i < clickCount; i++)
+                    {
+                        if (!arrayClass[i].isSelected) continue;
+
+                        arrayClass[i].isDragging = true;
+                        arrayClass[i].dragOffSet.x = mousePos.x - arrayClass[i].bounds.x;
+                        arrayClass[i].dragOffSet.y = mousePos.y - arrayClass[i].bounds.y;
+                    }
                 }
             }
         }
     }
 
     for (int i = 0; i < clickCount; i++) {
-        Color colorClass = (i == selectedIndex) ? ThemeAccent() : ThemeBorder();
+        Color colorClass = arrayClass[i].isSelected ? ThemeAccent() : ThemeBorder();
 
         if (arrayClass[i].isDragging)
         {
@@ -598,7 +712,7 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         for (int i = 0; i < clickCount; i++) arrayClass[i].isDragging = false;
     }
 
-    if (selectedIndex != -1)
+    if (selectedIndex != -1 && GetSelectedClassCount() == 1)
     {
         for (int corner = 0; corner < 4; corner++)
         {
@@ -612,6 +726,31 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
 void DrawClassProperties(Rectangle area, int *cursor)
 {
     if (selectedIndex == -1) return;
+
+    // Com varias selecionadas nao ha "a classe" para editar: o painel vira
+    // acao de grupo
+    if (GetSelectedClassCount() > 1)
+    {
+        char summary[64];
+        snprintf(summary, sizeof(summary), "%d classes selecionadas", GetSelectedClassCount());
+        DrawUiText(summary, area.x, area.y, 14, ThemeText());
+        PanelLabel("Arraste qualquer uma para mover o grupo.", area.x, area.y + 24);
+
+        if (PanelButton((Rectangle){area.x, area.y + area.height - 30, area.width, 28},
+                        "Excluir selecionadas", false, ThemeDanger(), 13, cursor))
+        {
+            PushHistory();
+
+            for (int i = clickCount - 1; i >= 0; i--)
+            {
+                if (arrayClass[i].isSelected) RemoveUMLClass(i);
+            }
+
+            ClearClassSelection();
+        }
+
+        return;
+    }
 
     UMLClass *cls = &arrayClass[selectedIndex];
     float y = area.y;
