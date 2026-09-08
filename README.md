@@ -20,6 +20,8 @@ o resultado em arquivo.
 - Painel de propriedades lateral com edição ao vivo.
 - Salvar e carregar em `diagrama.ruml` (formato de texto legível). Para abrir
   outro arquivo, arraste-o para dentro da janela.
+- Desfazer com `Ctrl + Z`; `Backspace` ou `Delete` apagam o que estiver
+  selecionado (classe ou relacionamento).
 - Tela cheia pelo botão ou `Alt + Enter`.
 
 ## Como compilar e rodar

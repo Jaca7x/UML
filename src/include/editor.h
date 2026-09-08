@@ -42,6 +42,9 @@ bool HasSelectedClass(void);
 void ClearClassSelection(void);
 void DrawClassProperties(Rectangle area, int *cursor);
 
+// Ha uma classe sem nome: o resto do programa fica bloqueado ate preencher
+bool IsClassNameRequired(void);
+
 int GetClassCount(void);
 int GetClassIdByIndex(int index);
 int FindClassIndexById(int id);

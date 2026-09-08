@@ -9,6 +9,9 @@
 
 void AppendTypedChars(char *buffer, int capacity)
 {
+    // Com Ctrl segurado a tecla e atalho (Ctrl+Z), nao texto
+    if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) return;
+
     int key = GetCharPressed();
     while (key > 0)
     {
