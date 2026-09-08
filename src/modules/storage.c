@@ -17,6 +17,40 @@
 #define FORMAT_HEADER "# RayUML 1"
 #define LINE_LEN 512
 
+// Retrato do que esta gravado em disco. Comparar o diagrama atual com ele diz
+// se ha alteracao pendente sem precisar de gancho em cada ponto de edicao.
+static char *savedSnapshot = NULL;
+static char currentPath[DIAGRAM_PATH_LEN] = DEFAULT_DIAGRAM_PATH;
+
+const char *GetCurrentDiagramPath(void)
+{
+    return currentPath;
+}
+
+void SetCurrentDiagramPath(const char *path)
+{
+    snprintf(currentPath, sizeof(currentPath), "%s", path);
+}
+
+static void MarkDiagramSaved(void)
+{
+    free(savedSnapshot);
+    savedSnapshot = SerializeDiagram();
+}
+
+bool IsDiagramDirty(void)
+{
+    char *current = SerializeDiagram();
+    if (current == NULL) return false;
+
+    // Sem retrato anterior, so esta sujo se houver algum conteudo
+    bool dirty = (savedSnapshot == NULL) ? (GetClassCount() > 0)
+                                         : (strcmp(savedSnapshot, current) != 0);
+    free(current);
+
+    return dirty;
+}
+
 // Limite superior por elemento, com folga: evita realocar durante a escrita
 #define BYTES_PER_CLASS    2048
 #define BYTES_PER_RELATION  128
@@ -62,6 +96,12 @@ bool SaveDiagram(const char *path)
 
     bool saved = SaveFileText((char *)path, text);
     free(text);
+
+    if (saved)
+    {
+        SetCurrentDiagramPath(path);
+        MarkDiagramSaved();
+    }
 
     return saved;
 }
@@ -149,6 +189,12 @@ bool LoadDiagram(const char *path)
 
     bool loaded = DeserializeDiagram(text);
     UnloadFileText(text);
+
+    if (loaded)
+    {
+        SetCurrentDiagramPath(path);
+        MarkDiagramSaved();
+    }
 
     return loaded;
 }

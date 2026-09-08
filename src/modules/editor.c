@@ -755,6 +755,8 @@ void DrawClassProperties(Rectangle area, int *cursor)
     UMLClass *cls = &arrayClass[selectedIndex];
     float y = area.y;
 
+    if (IsFileFieldFocused()) panelFocus = FOCUS_NONE;
+
     if (panelFocus == FOCUS_CLASS_NAME) AppendTypedChars(cls->name, CLASS_NAME_LEN);
     else if (panelFocus == FOCUS_PARAM_NAME && selectedParam != -1) AppendTypedChars(cls->params[selectedParam].name, PARAM_NAME_LEN);
     else if (panelFocus == FOCUS_PARAM_TYPE && selectedParam != -1) AppendTypedChars(cls->params[selectedParam].type, PARAM_TYPE_LEN);

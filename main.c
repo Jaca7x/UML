@@ -19,6 +19,11 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "RayUML Editor");
     LoadUiFont();
 
+    if (FileExists(RECOVERY_DIAGRAM_PATH))
+    {
+        ShowUiStatus("Ha uma recuperacao de " RECOVERY_DIAGRAM_PATH " da ultima sessao", true);
+    }
+
     Camera2D camera = { 0 };
     camera.zoom = 1.0f;
     camera.offset = (Vector2){screenWidth / 2.0f, screenHeight / 2.0f};
@@ -105,6 +110,10 @@ int main(void) {
             
         EndDrawing();
     }
+
+    // A raylib nao permite cancelar o fechamento, entao em vez de perguntar
+    // gravamos uma copia de recuperacao com o que estava em aberto.
+    if (IsDiagramDirty()) SaveDiagram(RECOVERY_DIAGRAM_PATH);
 
     UnloadUiFont();
     CloseWindow();

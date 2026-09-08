@@ -4,7 +4,9 @@
 #include "uifont.h"
 #include "theme.h"
 #include "storage.h"
+#include "widgets.h"
 #include <stdio.h>
+#include <string.h>
 
 #define TAB_HEIGHT       26
 #define TAB_WIDTH        84
@@ -27,6 +29,13 @@
 static int windowedWidth = 0;
 static int windowedHeight = 0;
 
+static char fileNameField[DIAGRAM_PATH_LEN] = DEFAULT_DIAGRAM_PATH;
+static bool fileNameFocused = false;
+
+// Carregar por cima de alteracoes pendentes precisa de confirmacao; fechar a
+// janela nao da, porque a raylib nao permite cancelar o fechamento.
+static bool confirmingLoad = false;
+
 static char statusMessage[STATUS_LEN] = {0};
 static Color statusColor = BLACK;
 static double statusUntil = 0.0;
@@ -38,21 +47,32 @@ static void SetStatus(const char *message, Color color)
     statusUntil = GetTime() + STATUS_DURATION;
 }
 
+bool IsFileFieldFocused(void)
+{
+    return fileNameFocused;
+}
+
 void ShowUiStatus(const char *message, bool success)
 {
     SetStatus(message, success ? ThemeSuccess() : ThemeDanger());
 }
 
-static void SaveToDefaultFile(void)
+static void SaveToField(void)
 {
-    if (SaveDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama salvo em " DEFAULT_DIAGRAM_PATH, ThemeSuccess());
+    if (SaveDiagram(fileNameField)) SetStatus("Diagrama salvo", ThemeSuccess());
     else SetStatus("Nao foi possivel salvar o arquivo", ThemeDanger());
 }
 
-static void LoadFromDefaultFile(void)
+static void LoadFromField(void)
 {
-    if (LoadDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama carregado", ThemeSuccess());
-    else SetStatus("Nao encontrei " DEFAULT_DIAGRAM_PATH, ThemeDanger());
+    if (LoadDiagram(fileNameField)) SetStatus("Diagrama carregado", ThemeSuccess());
+    else SetStatus("Nao encontrei o arquivo", ThemeDanger());
+}
+
+static void RequestLoad(void)
+{
+    if (IsDiagramDirty()) confirmingLoad = true;
+    else LoadFromField();
 }
 
 void ToggleFullscreenMode(void)
@@ -97,6 +117,10 @@ static Rectangle GetTabBounds(int index)
 bool IsMouseOverUi(void)
 {
     Vector2 mouse = GetMousePosition();
+
+    // Com o dialogo aberto a interface e dona de todo o input, nao so das
+    // suas regioes
+    if (confirmingLoad) return true;
 
     return CheckCollisionPointRec(mouse, GetMenuBarBounds()) || CheckCollisionPointRec(mouse, GetPanelBounds());
 }
@@ -226,8 +250,8 @@ typedef struct
 }ToolbarTab;
 
 static const ToolbarButton fileButtons[] = {
-    {ICON_SAVE, "salvar", NULL, SaveToDefaultFile},
-    {ICON_LOAD, "abrir",  NULL, LoadFromDefaultFile}
+    {ICON_SAVE, "salvar", NULL, SaveToField},
+    {ICON_LOAD, "abrir",  NULL, RequestLoad}
 };
 
 static const ToolbarButton insertButtons[] = {
@@ -341,9 +365,23 @@ void DrawUi(int *cursor) {
 
     if (!overControl && CheckCollisionPointRec(GetMousePosition(), menuBar)) *cursor = MOUSE_CURSOR_DEFAULT;
 
+    // O campo de arquivo pertence a aba Arquivo: e o "salvar como"
+    if (activeTab == 0)
+    {
+        Rectangle field = {GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 16, TAB_HEIGHT + 12, 220, 26};
+
+        if (fileNameFocused) AppendTypedChars(fileNameField, DIAGRAM_PATH_LEN);
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) fileNameFocused = false;
+
+        DrawUiText("arquivo", field.x, field.y - 14, 11, ThemeTextMuted());
+        if (PanelField(field, fileNameField, fileNameFocused, cursor)) fileNameFocused = true;
+    }
+
     if (GetTime() < statusUntil)
     {
         float statusX = GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 20;
+        if (activeTab == 0) statusX += 240;
+
         DrawUiText(statusMessage, statusX, TAB_HEIGHT + 18, 14, statusColor);
     }
 
@@ -381,6 +419,46 @@ void DrawUi(int *cursor) {
 
     content.y += 34;
     content.height -= 34;
+
+    if (confirmingLoad)
+    {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
+
+        const char *title = "Ha alteracoes que ainda nao foram salvas";
+        int titleWidth = MeasureUiText(title, 16);
+        Rectangle box = {(GetScreenWidth() - (titleWidth + 60)) / 2.0f,
+                         GetScreenHeight() / 2.0f - 60.0f, (float)titleWidth + 60, 120};
+
+        DrawRectangleRec(box, ThemeSurface());
+        DrawRectangleLinesEx(box, 2, ThemeAccent());
+        DrawUiText(title, box.x + 30, box.y + 22, 16, ThemeText());
+
+        float buttonWidth = (box.width - 60) / 3.0f;
+        float buttonY = box.y + box.height - 44;
+
+        if (PanelButton((Rectangle){box.x + 20, buttonY, buttonWidth, 30}, "Salvar antes",
+                        false, ThemeAccent(), 13, cursor))
+        {
+            SaveToField();
+            LoadFromField();
+            confirmingLoad = false;
+        }
+
+        if (PanelButton((Rectangle){box.x + 30 + buttonWidth, buttonY, buttonWidth, 30}, "Descartar",
+                        false, ThemeDanger(), 13, cursor))
+        {
+            LoadFromField();
+            confirmingLoad = false;
+        }
+
+        if (PanelButton((Rectangle){box.x + 40 + buttonWidth * 2, buttonY, buttonWidth, 30}, "Cancelar",
+                        false, ThemeBorder(), 13, cursor))
+        {
+            confirmingLoad = false;
+        }
+
+        return;
+    }
 
     if (HasSelectedRelation())
     {
