@@ -57,3 +57,53 @@ chore: Atualizando configuração do live serve
 ```
 
 Tipos usados no projeto: `feat`, `fix`, `refactor`, `chore`, `docs`.
+
+## Fluxo de trabalho
+
+A `main` só recebe código pronto. Todo trabalho acontece em uma branch
+própria, que entra na `main` por Merge Request no GitLab.
+
+### Nome da branch
+
+`tipo/descricao-em-kebab-case`, usando os mesmos tipos dos commits:
+
+```
+feat/salvar-carregar
+fix/multiplicidade-sobreposta
+refactor/extrair-widgets
+docs/fluxo-de-trabalho
+```
+
+### Ciclo
+
+```bash
+git checkout main && git pull            # parte da main atualizada
+git checkout -b feat/minha-feature
+
+# ... commits pequenos e descritivos durante o desenvolvimento ...
+
+git push -u origin feat/minha-feature
+glab mr create --fill                    # abre o Merge Request
+```
+
+Depois que o MR for aprovado e mesclado:
+
+```bash
+git checkout main && git pull
+git branch -d feat/minha-feature         # remove a branch local
+```
+
+### Escopo de uma branch
+
+Uma branch = uma feature. Se no meio do caminho aparecer algo não
+relacionado (um bug em outra área, uma limpeza), vale abrir outra branch a
+partir da `main` em vez de misturar — MRs que fazem duas coisas são difíceis
+de revisar e de reverter.
+
+### Histórico anterior
+
+Os commits até `6ddfea1` foram feitos direto na `main`, antes desta
+convenção. O commit `6ddfea1` em especial junta várias features porque as
+mudanças estavam entrelaçadas nos mesmos arquivos; ele não foi dividido
+porque já estava publicado, e reescrever histórico publicado exige
+`push --force`.
