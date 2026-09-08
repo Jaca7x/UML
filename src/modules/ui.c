@@ -2,6 +2,7 @@
 #include "editor.h"
 #include "relations.h"
 #include "uifont.h"
+#include "theme.h"
 #include "storage.h"
 #include <stdio.h>
 
@@ -10,15 +11,13 @@
 #define BUTTON_WIDTH    120
 #define BUTTON_HEIGHT    30
 #define BUTTON_GAP        8
-#define MENU_BUTTON_COUNT 5
+#define MENU_BUTTON_COUNT 6
 
 #define STATUS_DURATION 2.5
 #define STATUS_LEN       96
 
 #define PANEL_WIDTH     300
 #define PANEL_PADDING    14
-
-#define PANEL_BACKGROUND (Color){236, 236, 236, 255}
 
 static int windowedWidth = 0;
 static int windowedHeight = 0;
@@ -36,19 +35,19 @@ static void SetStatus(const char *message, Color color)
 
 void ShowUiStatus(const char *message, bool success)
 {
-    SetStatus(message, success ? DARKGREEN : MAROON);
+    SetStatus(message, success ? ThemeSuccess() : ThemeDanger());
 }
 
 static void SaveToDefaultFile(void)
 {
-    if (SaveDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama salvo em " DEFAULT_DIAGRAM_PATH, DARKGREEN);
-    else SetStatus("Nao foi possivel salvar o arquivo", MAROON);
+    if (SaveDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama salvo em " DEFAULT_DIAGRAM_PATH, ThemeSuccess());
+    else SetStatus("Nao foi possivel salvar o arquivo", ThemeDanger());
 }
 
 static void LoadFromDefaultFile(void)
 {
-    if (LoadDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama carregado", DARKGREEN);
-    else SetStatus("Nao encontrei " DEFAULT_DIAGRAM_PATH, MAROON);
+    if (LoadDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama carregado", ThemeSuccess());
+    else SetStatus("Nao encontrei " DEFAULT_DIAGRAM_PATH, ThemeDanger());
 }
 
 void ToggleFullscreenMode(void)
@@ -94,21 +93,21 @@ bool IsMouseOverUi(void)
 
 static void DrawMenuButton(Rectangle button, const char *label, bool isArmed, int *cursor, void (*onClick)(void))
 {
-    Color borderColor = BLACK;
-    Color textColor = BLACK;
+    Color borderColor = ThemeBorder();
+    Color textColor = ThemeText();
 
     if (CheckCollisionPointRec(GetMousePosition(), button))
     {
-        borderColor = BLUE;
-        textColor = BLUE;
+        borderColor = ThemeAccent();
+        textColor = ThemeAccent();
         *cursor = MOUSE_CURSOR_POINTING_HAND;
 
         if (!IsClassNameRequired() && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) onClick();
     }
 
-    if (isArmed) { borderColor = BLUE; textColor = BLUE; }
+    if (isArmed) { borderColor = ThemeAccent(); textColor = ThemeAccent(); }
 
-    DrawRectangleRec(button, isArmed ? Fade(BLUE, 0.15f) : RAYWHITE);
+    DrawRectangleRec(button, isArmed ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
     DrawUiText(label, button.x + 10, button.y + 8, 14, textColor);
     DrawRectangleLinesEx(button, 1, borderColor);
 }
@@ -118,14 +117,15 @@ void DrawUi(int *cursor) {
     Rectangle menuBar = GetMenuBarBounds();
     Rectangle panel = GetPanelBounds();
 
-    DrawRectangleRec(menuBar, LIGHTGRAY);
-    DrawLine(0, menuBar.height, GetScreenWidth(), menuBar.height, GRAY);
+    DrawRectangleRec(menuBar, ThemeMenuBar());
+    DrawLine(0, menuBar.height, GetScreenWidth(), menuBar.height, ThemeBorder());
 
     DrawMenuButton(GetButtonBounds(0), "Criar Classe", IsPlacingClass(), cursor, ArmClassPlacement);
     DrawMenuButton(GetButtonBounds(1), "Relacionar", IsRelationModeArmed(), cursor, ArmRelationMode);
     DrawMenuButton(GetButtonBounds(2), "Salvar", false, cursor, SaveToDefaultFile);
     DrawMenuButton(GetButtonBounds(3), "Carregar", false, cursor, LoadFromDefaultFile);
     DrawMenuButton(GetButtonBounds(4), "Tela Cheia", IsWindowFullscreen(), cursor, ToggleFullscreenMode);
+    DrawMenuButton(GetButtonBounds(5), IsDarkMode() ? "Tema Claro" : "Tema Escuro", IsDarkMode(), cursor, ToggleTheme);
 
     bool overButton = false;
     for (int i = 0; i < MENU_BUTTON_COUNT; i++)
@@ -158,20 +158,20 @@ void DrawUi(int *cursor) {
         Rectangle warning = {canvas.x + (canvas.width - boxWidth) / 2.0f,
                              canvas.y + canvas.height / 2.0f - 45, (float)boxWidth, 90};
 
-        DrawRectangleRec(warning, RAYWHITE);
-        DrawRectangleLinesEx(warning, 3, RED);
-        DrawUiText(title, warning.x + (warning.width - titleWidth) / 2.0f, warning.y + 24, 16, RED);
-        DrawUiText(hint, warning.x + (warning.width - hintWidth) / 2.0f, warning.y + 52, 14, BLACK);
+        DrawRectangleRec(warning, ThemeSurface());
+        DrawRectangleLinesEx(warning, 3, ThemeDanger());
+        DrawUiText(title, warning.x + (warning.width - titleWidth) / 2.0f, warning.y + 24, 16, ThemeDanger());
+        DrawUiText(hint, warning.x + (warning.width - hintWidth) / 2.0f, warning.y + 52, 14, ThemeText());
     }
 
-    DrawRectangleRec(panel, PANEL_BACKGROUND);
-    DrawLine(panel.x, panel.y, panel.x, panel.y + panel.height, GRAY);
+    DrawRectangleRec(panel, ThemePanel());
+    DrawLine(panel.x, panel.y, panel.x, panel.y + panel.height, ThemeBorder());
 
     Rectangle content = {panel.x + PANEL_PADDING, panel.y + PANEL_PADDING,
                           panel.width - PANEL_PADDING * 2, panel.height - PANEL_PADDING * 2};
 
-    DrawUiText("PROPRIEDADES", content.x, content.y, 14, BLACK);
-    DrawLine(content.x, content.y + 22, content.x + content.width, content.y + 22, GRAY);
+    DrawUiText("PROPRIEDADES", content.x, content.y, 14, ThemeText());
+    DrawLine(content.x, content.y + 22, content.x + content.width, content.y + 22, ThemeBorder());
 
     content.y += 34;
     content.height -= 34;
@@ -187,6 +187,6 @@ void DrawUi(int *cursor) {
     else
     {
         DrawUiText("Selecione uma classe ou\num relacionamento para\neditar as propriedades.",
-                 content.x, content.y + 8, 14, BLACK);
+                 content.x, content.y + 8, 14, ThemeTextMuted());
     }
 }

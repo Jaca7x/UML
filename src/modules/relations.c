@@ -4,6 +4,7 @@
 #include "../include/uifont.h"
 #include "../include/widgets.h"
 #include "../include/history.h"
+#include "../include/theme.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -454,7 +455,7 @@ static void DrawTriangleOrnament(Vector2 tip, Vector2 towards, bool filled, Colo
     Vector2 left = {base.x - uy * ORNAMENT_HALFWIDTH, base.y + ux * ORNAMENT_HALFWIDTH};
     Vector2 right = {base.x + uy * ORNAMENT_HALFWIDTH, base.y - ux * ORNAMENT_HALFWIDTH};
 
-    FillTriangle(tip, left, right, filled ? color : RAYWHITE);
+    FillTriangle(tip, left, right, filled ? color : ThemeCanvas());
     DrawLineEx(tip, left, LINE_THICKNESS, color);
     DrawLineEx(tip, right, LINE_THICKNESS, color);
     DrawLineEx(left, right, LINE_THICKNESS, color);
@@ -474,7 +475,7 @@ static void DrawDiamondOrnament(Vector2 tip, Vector2 towards, bool filled, Color
     Vector2 left = {middle.x - uy * ORNAMENT_HALFWIDTH, middle.y + ux * ORNAMENT_HALFWIDTH};
     Vector2 right = {middle.x + uy * ORNAMENT_HALFWIDTH, middle.y - ux * ORNAMENT_HALFWIDTH};
 
-    Color fill = filled ? color : RAYWHITE;
+    Color fill = filled ? color : ThemeCanvas();
     FillTriangle(tip, left, back, fill);
     FillTriangle(tip, back, right, fill);
 
@@ -527,8 +528,8 @@ static void DrawMultiplicity(const char *text, Vector2 endpoint, Vector2 towards
     float textX = anchor.x - textWidth / 2.0f;
     float textY = anchor.y - MULTIPLICITY_FONT / 2.0f;
 
-    DrawRectangle(textX - 3, textY - 2, textWidth + 6, MULTIPLICITY_FONT + 4, RAYWHITE);
-    DrawUiText(text, textX, textY, MULTIPLICITY_FONT, DARKGRAY);
+    DrawRectangle(textX - 3, textY - 2, textWidth + 6, MULTIPLICITY_FONT + 4, ThemeCanvas());
+    DrawUiText(text, textX, textY, MULTIPLICITY_FONT, ThemeTextMuted());
 }
 
 static bool GetRelationEndpoints(int index, Vector2 *start, Vector2 *end)
@@ -601,8 +602,8 @@ static void HandleArmedMode(Vector2 mousePos, int *cursor)
         if (fromIndex != -1)
         {
             Vector2 start = GetBorderPoint(GetClassBounds(fromIndex), mousePos);
-            DrawLineEx(start, mousePos, LINE_THICKNESS, SKYBLUE);
-            DrawRectangleLinesEx(GetClassBounds(fromIndex), 2, SKYBLUE);
+            DrawLineEx(start, mousePos, LINE_THICKNESS, ThemeAccent());
+            DrawRectangleLinesEx(GetClassBounds(fromIndex), 2, ThemeAccent());
         }
     }
 
@@ -677,7 +678,7 @@ static void DrawConnectHandle(Rectangle handle, BoxSide side, bool hover)
             break;
     }
 
-    FillTriangle(tip, left, right, hover ? BLUE : SKYBLUE);
+    FillTriangle(tip, left, right, hover ? ThemeAccent() : Fade(ThemeAccent(), 0.65f));
 }
 
 // Classe cuja area (incluindo a margem das setas) contem o mouse.
@@ -712,8 +713,8 @@ static void HandleConnectHandles(Vector2 mousePos, int *cursor)
         int targetIndex = GetClassIndexAt(mousePos);
         bool validTarget = (targetIndex != -1 && GetClassIdByIndex(targetIndex) != connectFromId);
 
-        DrawLineEx(GetBorderPoint(GetClassBounds(fromIndex), mousePos), mousePos, LINE_THICKNESS, SKYBLUE);
-        if (validTarget) DrawRectangleLinesEx(GetClassBounds(targetIndex), 2, SKYBLUE);
+        DrawLineEx(GetBorderPoint(GetClassBounds(fromIndex), mousePos), mousePos, LINE_THICKNESS, ThemeAccent());
+        if (validTarget) DrawRectangleLinesEx(GetClassBounds(targetIndex), 2, ThemeAccent());
 
         float dx = mousePos.x - connectPressPos.x;
         float dy = mousePos.y - connectPressPos.y;
@@ -795,9 +796,9 @@ void UpdateAndDrawRelations(Camera2D camera, int *cursor)
 
     for (int i = 0; i < relationCount; i++)
     {
-        Color color = BLACK;
-        if (i == selectedRelation) color = BLUE;
-        else if (i == hovered) color = SKYBLUE;
+        Color color = ThemeBorder();
+        if (i == selectedRelation) color = ThemeAccent();
+        else if (i == hovered) color = Fade(ThemeAccent(), 0.6f);
 
         DrawRelation(i, color);
     }
@@ -828,7 +829,7 @@ static void DrawQuickRow(Rectangle area, float y, char *target, int *cursor)
         bool isClear = (i == QUICK_COUNT - 1);
         const char *value = isClear ? "" : quickMultiplicity[i];
 
-        if (PanelButton(rect, quickMultiplicity[i], strcmp(target, value) == 0, BLUE, 11, cursor))
+        if (PanelButton(rect, quickMultiplicity[i], strcmp(target, value) == 0, ThemeAccent(), 11, cursor))
         {
             PushHistory();
             snprintf(target, MULTIPLICITY_LEN, "%s", value);
@@ -848,7 +849,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
 
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) panelFocus = FOCUS_NONE;
 
-    DrawUiText("Tipo", area.x, y, PANEL_LABEL_FONT, DARKGRAY);
+    DrawUiText("Tipo", area.x, y, PANEL_LABEL_FONT, ThemeTextMuted());
     y += 18;
 
     float typeWidth = (area.width - PANEL_GAP) / 2.0f;
@@ -858,7 +859,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
                           y + (i / 2) * (PANEL_ROW_HEIGHT + PANEL_GAP),
                           typeWidth, PANEL_ROW_HEIGHT};
 
-        if (PanelButton(rect, relationLabels[i], relation->type == (RelationType)i, BLUE, 11, cursor))
+        if (PanelButton(rect, relationLabels[i], relation->type == (RelationType)i, ThemeAccent(), 11, cursor))
         {
             panelError = ValidateRelation(selectedRelation, relation->fromId, relation->toId, (RelationType)i);
 
@@ -873,11 +874,11 @@ void DrawRelationProperties(Rectangle area, int *cursor)
 
     if (panelError != NULL)
     {
-        DrawUiText(panelError, area.x, y, 12, RED);
+        DrawUiText(panelError, area.x, y, 12, ThemeDanger());
     }
     y += 20;
 
-    DrawUiText("Multiplicidade na origem", area.x, y, PANEL_LABEL_FONT, DARKGRAY);
+    DrawUiText("Multiplicidade na origem", area.x, y, PANEL_LABEL_FONT, ThemeTextMuted());
     y += 18;
     if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, relation->fromMultiplicity, panelFocus == FOCUS_FROM, cursor))
     {
@@ -889,7 +890,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
     DrawQuickRow(area, y, relation->fromMultiplicity, cursor);
     y += 2 * PANEL_ROW_HEIGHT + PANEL_GAP + 16;
 
-    DrawUiText("Multiplicidade no destino", area.x, y, PANEL_LABEL_FONT, DARKGRAY);
+    DrawUiText("Multiplicidade no destino", area.x, y, PANEL_LABEL_FONT, ThemeTextMuted());
     y += 18;
     if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, relation->toMultiplicity, panelFocus == FOCUS_TO, cursor))
     {
@@ -900,7 +901,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
 
     DrawQuickRow(area, y, relation->toMultiplicity, cursor);
 
-    if (PanelButton((Rectangle){area.x, area.y + area.height - 30, area.width, 28}, "Excluir relacionamento", false, RED, 13, cursor))
+    if (PanelButton((Rectangle){area.x, area.y + area.height - 30, area.width, 28}, "Excluir relacionamento", false, ThemeDanger(), 13, cursor))
     {
         PushHistory();
         RemoveRelation(selectedRelation);
