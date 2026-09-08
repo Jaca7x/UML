@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 // Formato de linha unica por elemento, com aspas em volta do que o usuario
 // digita (nome e tipo aceitam espaco). Os `param` pertencem sempre a ultima
@@ -16,6 +17,67 @@
 
 #define FORMAT_HEADER "# RayUML 1"
 #define LINE_LEN 512
+
+// Retrato do que esta gravado em disco. Comparar o diagrama atual com ele diz
+// se ha alteracao pendente sem precisar de gancho em cada ponto de edicao.
+static char *savedSnapshot = NULL;
+static char currentPath[DIAGRAM_PATH_LEN] = DEFAULT_DIAGRAM_PATH;
+
+const char *GetCurrentDiagramPath(void)
+{
+    return currentPath;
+}
+
+void SetCurrentDiagramPath(const char *path)
+{
+    snprintf(currentPath, sizeof(currentPath), "%s", path);
+}
+
+// Exigir que o usuario digite a extensao faz ele perder o arquivo: sem ela o
+// arquivo nao aparece na lista de abrir.
+static void NormalizeDiagramPath(const char *path, char *out, int outSize)
+{
+    while (*path == ' ') path++;
+
+    int length = (int)strlen(path);
+    while (length > 0 && path[length - 1] == ' ') length--;
+
+    if (length == 0)
+    {
+        snprintf(out, outSize, "%s", DEFAULT_DIAGRAM_PATH);
+        return;
+    }
+
+    int extension = (int)strlen(DIAGRAM_EXTENSION);
+    bool hasExtension = (length > extension);
+
+    for (int i = 0; i < extension && hasExtension; i++)
+    {
+        if (tolower(path[length - extension + i]) != DIAGRAM_EXTENSION[i]) hasExtension = false;
+    }
+
+    if (hasExtension) snprintf(out, outSize, "%.*s", length, path);
+    else snprintf(out, outSize, "%.*s%s", length, path, DIAGRAM_EXTENSION);
+}
+
+static void MarkDiagramSaved(void)
+{
+    free(savedSnapshot);
+    savedSnapshot = SerializeDiagram();
+}
+
+bool IsDiagramDirty(void)
+{
+    char *current = SerializeDiagram();
+    if (current == NULL) return false;
+
+    // Sem retrato anterior, so esta sujo se houver algum conteudo
+    bool dirty = (savedSnapshot == NULL) ? (GetClassCount() > 0)
+                                         : (strcmp(savedSnapshot, current) != 0);
+    free(current);
+
+    return dirty;
+}
 
 // Limite superior por elemento, com folga: evita realocar durante a escrita
 #define BYTES_PER_CLASS    2048
@@ -60,8 +122,17 @@ bool SaveDiagram(const char *path)
     char *text = SerializeDiagram();
     if (text == NULL) return false;
 
-    bool saved = SaveFileText((char *)path, text);
+    char normalized[DIAGRAM_PATH_LEN];
+    NormalizeDiagramPath(path, normalized, sizeof(normalized));
+
+    bool saved = SaveFileText(normalized, text);
     free(text);
+
+    if (saved)
+    {
+        SetCurrentDiagramPath(normalized);
+        MarkDiagramSaved();
+    }
 
     return saved;
 }
@@ -149,6 +220,12 @@ bool LoadDiagram(const char *path)
 
     bool loaded = DeserializeDiagram(text);
     UnloadFileText(text);
+
+    if (loaded)
+    {
+        SetCurrentDiagramPath(path);
+        MarkDiagramSaved();
+    }
 
     return loaded;
 }

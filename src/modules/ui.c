@@ -4,7 +4,9 @@
 #include "uifont.h"
 #include "theme.h"
 #include "storage.h"
+#include "widgets.h"
 #include <stdio.h>
+#include <string.h>
 
 #define TAB_HEIGHT       26
 #define TAB_WIDTH        84
@@ -21,11 +23,25 @@
 #define STATUS_DURATION 2.5
 #define STATUS_LEN       96
 
+#define MAX_LISTED_FILES  10
+#define FILE_ROW_HEIGHT   26
+
 #define PANEL_WIDTH     300
 #define PANEL_PADDING    14
 
 static int windowedWidth = 0;
 static int windowedHeight = 0;
+
+static char fileNameField[DIAGRAM_PATH_LEN] = DEFAULT_DIAGRAM_PATH;
+static bool fileNameFocused = false;
+
+// Carregar por cima de alteracoes pendentes precisa de confirmacao; fechar a
+// janela nao da, porque a raylib nao permite cancelar o fechamento.
+static bool confirmingLoad = false;
+
+// Lista de arquivos do diretorio: evita ter que lembrar o nome para abrir
+static bool browsingFiles = false;
+static char pendingLoadPath[DIAGRAM_PATH_LEN] = {0};
 
 static char statusMessage[STATUS_LEN] = {0};
 static Color statusColor = BLACK;
@@ -38,21 +54,51 @@ static void SetStatus(const char *message, Color color)
     statusUntil = GetTime() + STATUS_DURATION;
 }
 
+bool IsFileFieldFocused(void)
+{
+    return fileNameFocused;
+}
+
 void ShowUiStatus(const char *message, bool success)
 {
     SetStatus(message, success ? ThemeSuccess() : ThemeDanger());
 }
 
-static void SaveToDefaultFile(void)
+static void SaveToField(void)
 {
-    if (SaveDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama salvo em " DEFAULT_DIAGRAM_PATH, ThemeSuccess());
+    if (SaveDiagram(fileNameField))
+    {
+        // Mostra o nome com a extensao que o sistema completou
+        snprintf(fileNameField, sizeof(fileNameField), "%s", GetCurrentDiagramPath());
+        SetStatus("Diagrama salvo", ThemeSuccess());
+    }
     else SetStatus("Nao foi possivel salvar o arquivo", ThemeDanger());
 }
 
-static void LoadFromDefaultFile(void)
+static void LoadPendingFile(void)
 {
-    if (LoadDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama carregado", ThemeSuccess());
-    else SetStatus("Nao encontrei " DEFAULT_DIAGRAM_PATH, ThemeDanger());
+    if (LoadDiagram(pendingLoadPath))
+    {
+        // O campo acompanha o arquivo aberto, para salvar voltar nele sem redigitar
+        snprintf(fileNameField, sizeof(fileNameField), "%s", pendingLoadPath);
+        SetStatus("Diagrama carregado", ThemeSuccess());
+    }
+    else SetStatus("Nao foi possivel abrir o arquivo", ThemeDanger());
+}
+
+// Abrir sempre passa pela lista; a confirmacao so entra se houver risco de perda
+static void RequestLoad(void)
+{
+    browsingFiles = true;
+}
+
+static void ChooseFile(const char *path)
+{
+    snprintf(pendingLoadPath, sizeof(pendingLoadPath), "%s", path);
+    browsingFiles = false;
+
+    if (IsDiagramDirty()) confirmingLoad = true;
+    else LoadPendingFile();
 }
 
 void ToggleFullscreenMode(void)
@@ -97,6 +143,10 @@ static Rectangle GetTabBounds(int index)
 bool IsMouseOverUi(void)
 {
     Vector2 mouse = GetMousePosition();
+
+    // Com o dialogo aberto a interface e dona de todo o input, nao so das
+    // suas regioes
+    if (confirmingLoad || browsingFiles) return true;
 
     return CheckCollisionPointRec(mouse, GetMenuBarBounds()) || CheckCollisionPointRec(mouse, GetPanelBounds());
 }
@@ -226,8 +276,8 @@ typedef struct
 }ToolbarTab;
 
 static const ToolbarButton fileButtons[] = {
-    {ICON_SAVE, "salvar", NULL, SaveToDefaultFile},
-    {ICON_LOAD, "abrir",  NULL, LoadFromDefaultFile}
+    {ICON_SAVE, "salvar", NULL, SaveToField},
+    {ICON_LOAD, "abrir",  NULL, RequestLoad}
 };
 
 static const ToolbarButton insertButtons[] = {
@@ -341,9 +391,23 @@ void DrawUi(int *cursor) {
 
     if (!overControl && CheckCollisionPointRec(GetMousePosition(), menuBar)) *cursor = MOUSE_CURSOR_DEFAULT;
 
+    // O campo de arquivo pertence a aba Arquivo: e o "salvar como"
+    if (activeTab == 0)
+    {
+        Rectangle field = {GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 16, TAB_HEIGHT + 12, 220, 26};
+
+        if (fileNameFocused) AppendTypedChars(fileNameField, DIAGRAM_PATH_LEN);
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) fileNameFocused = false;
+
+        DrawUiText("arquivo", field.x, field.y - 14, 11, ThemeTextMuted());
+        if (PanelField(field, fileNameField, fileNameFocused, cursor)) fileNameFocused = true;
+    }
+
     if (GetTime() < statusUntil)
     {
         float statusX = GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 20;
+        if (activeTab == 0) statusX += 240;
+
         DrawUiText(statusMessage, statusX, TAB_HEIGHT + 18, 14, statusColor);
     }
 
@@ -381,6 +445,109 @@ void DrawUi(int *cursor) {
 
     content.y += 34;
     content.height -= 34;
+
+    if (browsingFiles)
+    {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
+
+        FilePathList files = LoadDirectoryFilesEx(".", ".ruml", false);
+
+        int visible = (files.count > MAX_LISTED_FILES) ? MAX_LISTED_FILES : (int)files.count;
+        float listHeight = (visible > 0) ? visible * (FILE_ROW_HEIGHT + 4) : 30.0f;
+
+        Rectangle box = {(GetScreenWidth() - 360) / 2.0f, GetScreenHeight() / 2.0f - (listHeight + 110) / 2.0f,
+                         360, listHeight + 110};
+
+        DrawRectangleRec(box, ThemeSurface());
+        DrawRectangleLinesEx(box, 2, ThemeAccent());
+        DrawUiText("Abrir diagrama", box.x + 20, box.y + 18, 16, ThemeText());
+
+        float rowY = box.y + 48;
+
+        if (files.count == 0)
+        {
+            DrawUiText("Nenhum arquivo .ruml nesta pasta", box.x + 20, rowY + 6, 13, ThemeTextMuted());
+        }
+
+        for (int i = 0; i < visible; i++)
+        {
+            Rectangle row = {box.x + 20, rowY, box.width - 40, FILE_ROW_HEIGHT};
+            const char *name = GetFileName(files.paths[i]);
+
+            bool hover = CheckCollisionPointRec(GetMousePosition(), row);
+            if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
+
+            DrawRectangleRec(row, hover ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
+            DrawRectangleLinesEx(row, 1, hover ? ThemeAccent() : ThemeBorder());
+            DrawUiText(name, row.x + 10, row.y + 6, 13, ThemeText());
+
+            if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            {
+                ChooseFile(files.paths[i]);
+                UnloadDirectoryFiles(files);
+                return;
+            }
+
+            rowY += FILE_ROW_HEIGHT + 4;
+        }
+
+        if ((int)files.count > visible)
+        {
+            char extra[64];
+            snprintf(extra, sizeof(extra), "e mais %d arquivo(s)", (int)files.count - visible);
+            DrawUiText(extra, box.x + 20, rowY + 2, 12, ThemeTextMuted());
+        }
+
+        UnloadDirectoryFiles(files);
+
+        if (PanelButton((Rectangle){box.x + box.width - 120, box.y + box.height - 42, 100, 30},
+                        "Cancelar", false, ThemeBorder(), 13, cursor))
+        {
+            browsingFiles = false;
+        }
+
+        return;
+    }
+
+    if (confirmingLoad)
+    {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
+
+        const char *title = "Ha alteracoes que ainda nao foram salvas";
+        int titleWidth = MeasureUiText(title, 16);
+        Rectangle box = {(GetScreenWidth() - (titleWidth + 60)) / 2.0f,
+                         GetScreenHeight() / 2.0f - 60.0f, (float)titleWidth + 60, 120};
+
+        DrawRectangleRec(box, ThemeSurface());
+        DrawRectangleLinesEx(box, 2, ThemeAccent());
+        DrawUiText(title, box.x + 30, box.y + 22, 16, ThemeText());
+
+        float buttonWidth = (box.width - 60) / 3.0f;
+        float buttonY = box.y + box.height - 44;
+
+        if (PanelButton((Rectangle){box.x + 20, buttonY, buttonWidth, 30}, "Salvar antes",
+                        false, ThemeAccent(), 13, cursor))
+        {
+            SaveToField();
+            LoadPendingFile();
+            confirmingLoad = false;
+        }
+
+        if (PanelButton((Rectangle){box.x + 30 + buttonWidth, buttonY, buttonWidth, 30}, "Descartar",
+                        false, ThemeDanger(), 13, cursor))
+        {
+            LoadPendingFile();
+            confirmingLoad = false;
+        }
+
+        if (PanelButton((Rectangle){box.x + 40 + buttonWidth * 2, buttonY, buttonWidth, 30}, "Cancelar",
+                        false, ThemeBorder(), 13, cursor))
+        {
+            confirmingLoad = false;
+        }
+
+        return;
+    }
 
     if (HasSelectedRelation())
     {
