@@ -15,4 +15,7 @@ bool PanelField(Rectangle rect, const char *value, bool focused, int *cursor);
 
 void PanelLabel(const char *text, float x, float y);
 
+// Faixa de abas. Devolve o indice ativo, ja considerando clique nesta chamada.
+int PanelTabs(Rectangle area, const char **names, int count, int active, int *cursor);
+
 #endif

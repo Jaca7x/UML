@@ -7,12 +7,25 @@
 #define PARAM_TYPE_LEN 32
 #define MAX_PARAMS     16
 
+#define METHOD_NAME_LEN 48
+#define METHOD_ARGS_LEN 64
+#define METHOD_TYPE_LEN 32
+#define MAX_METHODS     16
+
 typedef struct
 {
     char visibility;
     char name[PARAM_NAME_LEN];
     char type[PARAM_TYPE_LEN];
 }UMLParam;
+
+typedef struct
+{
+    char visibility;
+    char name[METHOD_NAME_LEN];
+    char args[METHOD_ARGS_LEN];
+    char returnType[METHOD_TYPE_LEN];
+}UMLMethod;
 
 typedef struct
 {
@@ -24,7 +37,8 @@ typedef struct
     char name[CLASS_NAME_LEN];
     UMLParam params[MAX_PARAMS];
     int paramCount;
-    char methods[256];
+    UMLMethod methods[MAX_METHODS];
+    int methodCount;
 
     // Tamanho definido pelo usuario nas alcas; o conteudo ainda define o minimo
     float userWidth;
@@ -62,5 +76,6 @@ const UMLClass *GetClass(int index);
 void ClearAllClasses(void);
 int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth, float userHeight);
 void AddParamToClass(int index, char visibility, const char *name, const char *type);
+void AddMethodToClass(int index, char visibility, const char *name, const char *args, const char *returnType);
 
 #endif
