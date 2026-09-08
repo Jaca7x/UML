@@ -48,6 +48,25 @@ Faz um build completo (não incremental — recompila tudo sempre) e roda
 `game.exe` em seguida. Útil como um comando único e "burro" para rodar por
 fora do VS Code, ou como alvo de um watcher (veja abaixo).
 
+## Fonte da interface (opcional)
+
+A interface tenta carregar `assets/fonts/ui.ttf` na inicializacao. Se o
+arquivo nao existir, cai automaticamente na fonte padrao da raylib — o
+projeto compila e roda normalmente sem ele.
+
+A fonte padrao e um bitmap de 10px, entao qualquer tamanho que nao seja
+multiplo de 10 sai com escala quebrada e aspecto irregular. Para a
+interface ficar nitida, coloque um `.ttf` de licenca livre nesse caminho:
+
+```
+assets/fonts/ui.ttf
+```
+
+Boas opcoes (todas com licenca aberta): [Inter](https://rsms.me/inter/),
+[Roboto](https://fonts.google.com/specimen/Roboto) ou
+[DejaVu Sans](https://dejavu-fonts.github.io/). Basta renomear o arquivo
+para `ui.ttf`.
+
 ## Compilar para Android
 
 `Makefile.Android` é o Makefile padrão de projetos raylib para Android

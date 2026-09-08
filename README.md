@@ -5,22 +5,27 @@ Software para criação de diagramas UML, feito em **C** com
 
 ## Status
 
-Em desenvolvimento inicial. Já é possível criar classes UML pelo botão de
-UI e arrastá-las livremente pelo canvas, com suporte a zoom e pan.
+Em desenvolvimento. Já é possível montar um diagrama de classes completo —
+classes com atributos tipados e relacionamentos com multiplicidade — mas o
+diagrama ainda **não pode ser salvo**.
 
 ## Funcionalidades
 
 - Canvas infinito com grid, zoom (scroll) e pan (botão direito do mouse).
-- Criação de classes UML via botão de UI.
-- Arrastar classes pelo canvas.
-- Alternar tela cheia (`Alt + Enter`).
+- Classes com nome e lista de atributos (visibilidade, nome e tipo), com a
+  caixa se ajustando ao conteúdo e alças para redimensionar manualmente.
+- Os 6 relacionamentos do UML (associação, herança, agregação, composição,
+  dependência e realização) com multiplicidade nas duas pontas. As linhas
+  ancoram nas bordas e acompanham as classes ao arrastar.
+- Painel de propriedades lateral com edição ao vivo.
+- Tela cheia pelo botão ou `Alt + Enter`.
 
 ## Como compilar e rodar
 
 Veja o guia completo em [docs/BUILD.md](docs/BUILD.md). Resumo (Windows):
 
 ```bat
-build.bat
+make run
 ```
 
 ## Documentação
@@ -35,13 +40,14 @@ build.bat
 
 ```
 UML/
+├── assets/fonts/  # Fonte opcional da interface (ver BUILD.md)
 ├── docs/          # Documentação de apoio
 ├── lib/           # Headers de terceiros (raylib)
 ├── src/
 │   ├── include/    # Headers dos módulos
-│   └── modules/    # Implementação dos módulos
+│   └── modules/    # editor, relations, ui, widgets, uifont, renderer
 ├── main.c         # Ponto de entrada
-└── build.bat      # Script de build (Windows)
+└── Makefile       # Build incremental
 ```
 
 Detalhes em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

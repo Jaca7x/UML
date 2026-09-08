@@ -7,28 +7,35 @@ atualizado sempre que a estrutura de módulos mudar.
 
 RayUML Editor é uma aplicação desktop (C + [raylib](https://www.raylib.com/))
 para criação visual de diagramas UML: um canvas com câmera 2D (pan/zoom) onde
-o usuário cria e arrasta "classes" representadas como caixas.
+o usuário cria classes, edita seus parâmetros e liga umas às outras com os
+relacionamentos do UML.
+
+A interface é dividida em duas regiões: o **canvas** (espaço de mundo, sujeito
+a pan/zoom) e a **UI de tela** — a barra de menu no topo e o painel de
+propriedades à direita, que não são afetados pela câmera.
 
 ## Estrutura de pastas
 
 ```
 UML/
-├── docs/                 # Documentação de apoio (este arquivo, build, convenções)
-├── lib/                  # Headers de terceiros (raylib.h, raymath.h)
+├── assets/
+│   └── fonts/              # ui.ttf opcional (ver BUILD.md)
+├── docs/                   # Documentação de apoio (este arquivo, build, convenções)
+├── lib/                    # Headers de terceiros (raylib.h, raymath.h)
 ├── src/
-│   ├── include/           # Headers públicos dos módulos (.h)
-│   │   ├── editor.h        # Struct UMLClass e API de criação/atualização de classes
-│   │   ├── renderer.h      # API de desenho do mundo (grid, etc.)
-│   │   └── ui.h             # API dos elementos de interface (botões, painéis)
-│   └── modules/            # Implementação dos módulos (.c), 1:1 com os headers
-│       ├── editor.c
-│       ├── renderer.c
-│       └── ui.c
-├── main.c                 # Ponto de entrada: janela, câmera, game loop
+│   ├── include/             # Headers públicos dos módulos (.h)
+│   │   ├── editor.h          # UMLClass, UMLParam e API das classes
+│   │   ├── relations.h       # UMLRelation, RelationType e API dos relacionamentos
+│   │   ├── renderer.h        # Desenho do mundo (grid)
+│   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
+│   │   ├── uifont.h          # Carregamento e desenho de texto
+│   │   └── widgets.h         # Botões e campos do painel de propriedades
+│   └── modules/             # Implementação dos módulos (.c), 1:1 com os headers
+├── main.c                  # Ponto de entrada: janela, câmera, game loop
 ├── Makefile                # Build incremental para desktop (recomendado, ver BUILD.md)
 ├── build.bat               # Script de build alternativo para Windows (não incremental)
-├── Makefile.Android         # Build para Android (raylib build system)
-└── .vscode/                 # Tasks e configs do editor (build debug/release via make)
+├── Makefile.Android        # Build para Android (raylib build system)
+└── .vscode/                # Tasks e configs do editor (build debug/release via make)
 ```
 
 Cada módulo segue o padrão **1 header em `src/include/` + 1 implementação em
@@ -37,56 +44,109 @@ módulos devem seguir o mesmo par header/implementação.
 
 ## Módulos
 
-### `editor` (`src/include/editor.h`, `src/modules/editor.c`)
+### `editor` (`editor.h` / `editor.c`)
 
-Dono do estado do diagrama: o array dinâmico de `UMLClass` e a lógica de
-criar, selecionar e arrastar classes.
+Dono do estado do diagrama: o array dinâmico de `UMLClass`, a seleção atual e
+a lógica de criar, arrastar, redimensionar e editar classes.
 
-- `UMLClass`: struct com posição/tamanho (`bounds`), identidade (`id`,
-  `name`), conteúdo (`atributes`, `methods`) e estado de interação
-  (`isSelected`, `isDragging`, `dragOffSet`).
-- `AddUMLClass(Camera2D camera)`: cria uma nova classe.
-- `UpdateAndDrawBoxes(Camera2D camera, int *cursor)`: atualiza input
-  (seleção/drag) e desenha todas as classes a cada frame. Recebe um ponteiro
-  para o cursor do frame (`cursor`) para que módulos de UI/editor possam
-  sinalizar qual cursor deve ser exibido, sem cada módulo chamar
-  `SetMouseCursor` diretamente.
+- `UMLClass`: posição/tamanho (`bounds`), identidade (`id`, `name`), lista de
+  `UMLParam` (visibilidade, nome, tipo), tamanho manual (`userWidth`,
+  `userHeight`) e estado de arrasto.
+- `UpdateAndDrawBoxes(camera, cursor)`: input e desenho das classes, em espaço
+  de mundo.
+- `DrawClassProperties(area, cursor)`: conteúdo do painel lateral quando há uma
+  classe selecionada.
+- Acessores (`GetClassBounds`, `FindClassIndexById`, `GetClassIndexAt`, ...)
+  usados pelo módulo de relacionamentos.
 
-### `renderer` (`src/include/renderer.h`, `src/modules/renderer.c`)
+**Ids estáveis:** cada classe recebe um `id` único na criação, que nunca muda.
+Relacionamentos guardam esse id, não o índice do array — excluir uma classe
+reordena o array, o que quebraria as ligações.
 
-Responsável por desenho de "mundo" que não é estado do diagrama em si —
-hoje, o grid de fundo (`DrawWorldGrid`).
+**Tamanho da caixa:** o conteúdo define o **mínimo**. `userWidth`/`userHeight`
+guardam o tamanho definido nas alças de redimensionamento e só valem quando
+maiores que o conteúdo (`0` = automático).
 
-### `ui` (`src/include/ui.h`, `src/modules/ui.c`)
+### `relations` (`relations.h` / `relations.c`)
 
-Elementos de interface que vivem em espaço de tela (não afetados pela
-câmera), como o botão "Criar Classe" (`DrawUi`). Chama para dentro do
-`editor` (ex.: `AddUMLClass`) quando o usuário interage com um botão.
+Dono dos relacionamentos: os 6 tipos do UML (associação, herança, agregação,
+composição, dependência, realização), multiplicidade nas duas pontas, e todo
+o desenho de linhas e ornamentos.
+
+- Criação por dois caminhos: o botão "Relacionar" (dois cliques) ou as setas
+  que aparecem ao redor da classe (arrastar ou clicar).
+- `DrawRelationProperties(area, cursor)`: painel lateral do relacionamento.
+- Valida duplicata exata e **herança circular** (percorrendo a cadeia inteira,
+  não só o caso direto).
+- Relacionamentos cujas classes sumiram são removidos sozinhos a cada frame.
+
+**Âncoras nas bordas:** as linhas não saem do centro das caixas. Cada ponta
+escolhe a borda pela posição relativa e, quando várias conexões saem da mesma
+borda, são distribuídas ao longo dela para não se sobrepor. Isso é
+pré-calculado uma vez por frame em `RebuildGeometry()`, agrupando por
+`(classe, lado)` — ponta a ponta seria `O(r² × c)`.
+
+### `ui` (`ui.h` / `ui.c`)
+
+Barra de menu do topo (Criar Classe, Relacionar, Tela Cheia) e o painel de
+propriedades à direita. O painel desenha a moldura e delega o conteúdo para
+`DrawClassProperties` ou `DrawRelationProperties`, conforme a seleção.
+
+`IsMouseOverUi()` cobre as duas regiões e é o que impede o canvas de reagir a
+cliques que pertencem à interface.
+
+### `widgets` (`widgets.h` / `widgets.c`)
+
+Botões, campos de texto e rótulos usados pelos painéis. Existe para os módulos
+`editor` e `relations` não duplicarem esses controles.
+
+### `uifont` (`uifont.h` / `uifont.c`)
+
+Carrega a fonte e desenha todo o texto do programa. Procura, nesta ordem,
+`assets/fonts/ui.ttf` e a fonte do sistema; sem nenhuma, usa a fonte padrão da
+raylib.
+
+**Por que existe:** a fonte padrão da raylib é um bitmap de 10px e fica
+irregular em qualquer tamanho que não seja múltiplo dela. O módulo carrega
+**um atlas por tamanho usado** (12, 14, 16) e desenha sempre no tamanho do
+atlas, mantendo a escala em 1:1 — escalar a textura é o que borra o texto.
+
+### `renderer` (`renderer.h` / `renderer.c`)
+
+Desenho de mundo que não é estado do diagrama — hoje, o grid de fundo.
 
 ## Fluxo de execução (`main.c`)
 
-1. Cria a janela e a `Camera2D` (zoom inicial 1.0, offset no centro da tela).
-2. Loop principal (`while (!WindowShouldClose())`):
-   - Lê input de zoom (scroll) e pan (botão direito do mouse) e atualiza a
-     câmera.
-   - Trata atalho de fullscreen (`Alt+Enter`).
-   - Desenha, em ordem: grid do mundo → classes UML (dentro de
-     `BeginMode2D`/`EndMode2D`, ou seja, sujeitos à câmera) → UI de tela
-     (fora do `Mode2D`, em coordenadas de tela).
-   - Aplica o cursor do frame (`SetMouseCursor`) definido pelos módulos.
+1. Declara suporte a DPI (`FLAG_WINDOW_HIGHDPI`), cria a janela, carrega a
+   fonte e inicializa a `Camera2D`.
+2. Loop principal:
+   - Zoom (scroll), pan (botão direito) e atalho de tela cheia.
+   - Dentro de `BeginMode2D`/`EndMode2D`: grid → **relacionamentos** →
+     classes. As linhas vêm antes para ficarem atrás das caixas.
+   - Fora do `Mode2D`: barra de menu e painel lateral.
+   - Aplica o cursor do frame.
 
-O ponteiro `int *cursor` que circula entre `main`, `editor` e `ui` é o
-mecanismo usado para os módulos "pedirem" um cursor específico (ex.: mão ao
-passar sobre um botão, resize ao arrastar) sem cada um chamar a API do
-raylib diretamente — mantém a decisão final centralizada no loop principal.
+**Ordem importa.** `UpdateAndDrawRelations` roda antes de `UpdateAndDrawBoxes`,
+então o módulo de relacionamentos processa o clique primeiro. Quando ele
+consome um clique (criar ou selecionar um relacionamento), sinaliza via
+`DidRelationsConsumeClick()` e o editor ignora aquele frame — sem isso o mesmo
+clique selecionaria também a classe embaixo do cursor.
+
+**Cursor:** o ponteiro `int *cursor` circula entre `main` e os módulos para que
+cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
+`SetMouseCursor` direto, mantendo a decisão final no loop principal.
 
 ## Roadmap (alto nível)
 
-- [ ] Persistir/serializar o diagrama (salvar/carregar `.json` ou formato
-      próprio).
-- [ ] Edição de atributos/métodos das classes (hoje os campos existem na
-      struct mas não são editáveis pela UI).
-- [ ] Relacionamentos entre classes (herança, associação, composição, etc.).
-- [ ] Seleção múltipla / exclusão de classes.
+- [x] Criação, edição e exclusão de classes
+- [x] Parâmetros com visibilidade, nome e tipo
+- [x] Relacionamentos com multiplicidade
+- [x] Painel de propriedades com edição ao vivo
+- [ ] Persistir/serializar o diagrama (salvar/carregar)
+- [ ] Exportar o diagrama como imagem
+- [ ] Métodos da classe (terceiro compartimento; o campo `methods` já existe
+      na struct mas não é usado)
+- [ ] Desfazer/refazer
+- [ ] Seleção múltipla e alinhamento na grade
 
 Consulte também [BUILD.md](BUILD.md) e [CONVENTIONS.md](CONVENTIONS.md).

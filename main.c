@@ -1,20 +1,24 @@
 #include "lib/raylib.h"
 #include "src/include/renderer.h"
 #include "src/include/editor.h"
+#include "src/include/relations.h"
 #include "src/include/ui.h"
+#include "src/include/uifont.h"
 #include <math.h>
 
 int main(void) {
     const int screenWidth = 1200;
     const int screenHeight = 800;
+    // Sem isso o Windows estica a janela inteira quando o display usa
+    // escalonamento (125%, 150%), o que borra e engrossa todo o texto.
+    SetConfigFlags(FLAG_WINDOW_HIGHDPI);
+
     InitWindow(screenWidth, screenHeight, "RayUML Editor");
+    LoadUiFont();
 
     Camera2D camera = { 0 };
     camera.zoom = 1.0f;
     camera.offset = (Vector2){screenWidth / 2.0f, screenHeight / 2.0f};
-
-    Rectangle ui = {10, 10, 100, 50};
-    bool isDraw = false;
 
     SetTargetFPS(60);
 
@@ -34,19 +38,9 @@ int main(void) {
 
         
         if (IsKeyPressed(KEY_ENTER) && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)))
- 		{
- 			int display = GetCurrentMonitor();
-            
-            if (IsWindowFullscreen())
-            {
-                SetWindowSize(screenWidth, screenHeight);
-            }
-            else
-            {
-                SetWindowSize(GetMonitorWidth(display), GetMonitorHeight(display));
-            }
- 			ToggleFullscreen();
- 		}
+        {
+            ToggleFullscreenMode();
+        }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -54,17 +48,19 @@ int main(void) {
             BeginMode2D(camera);
                 
                 DrawWorldGrid(10000, 50.0f, LIGHTGRAY);
+                UpdateAndDrawRelations(camera, &frameCursor);
                 UpdateAndDrawBoxes(camera, &frameCursor);
-                
+
             EndMode2D();
 
-            DrawUi(ui, camera, &frameCursor);
+            DrawUi(&frameCursor);
 
             SetMouseCursor(frameCursor);
             
         EndDrawing();
     }
 
+    UnloadUiFont();
     CloseWindow();
     return 0;
 }
