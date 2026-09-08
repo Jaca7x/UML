@@ -3,6 +3,7 @@
 #include "../include/ui.h"
 #include "../include/uifont.h"
 #include "../include/widgets.h"
+#include "../include/history.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -242,6 +243,8 @@ static void CreateRelation(int fromId, int toId)
 {
     panelError = ValidateRelation(-1, fromId, toId, RELATION_ASSOCIATION);
     if (panelError != NULL) return;
+
+    PushHistory();
 
     relationCount++;
     relations = (UMLRelation *)realloc(relations, relationCount * sizeof(UMLRelation));
@@ -799,6 +802,15 @@ void UpdateAndDrawRelations(Camera2D camera, int *cursor)
         DrawRelation(i, color);
     }
 
+    if (selectedRelation != -1 && panelFocus == FOCUS_NONE
+        && (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_DELETE)))
+    {
+        PushHistory();
+        RemoveRelation(selectedRelation);
+        ClearRelationSelection();
+        return;
+    }
+
     if (relationArmed && !IsMouseOverUi()) HandleArmedMode(mousePos, cursor);
     else if (!relationArmed && !IsMouseOverUi()) HandleConnectHandles(mousePos, cursor);
 }
@@ -818,6 +830,7 @@ static void DrawQuickRow(Rectangle area, float y, char *target, int *cursor)
 
         if (PanelButton(rect, quickMultiplicity[i], strcmp(target, value) == 0, BLUE, 11, cursor))
         {
+            PushHistory();
             snprintf(target, MULTIPLICITY_LEN, "%s", value);
         }
     }
@@ -848,7 +861,12 @@ void DrawRelationProperties(Rectangle area, int *cursor)
         if (PanelButton(rect, relationLabels[i], relation->type == (RelationType)i, BLUE, 11, cursor))
         {
             panelError = ValidateRelation(selectedRelation, relation->fromId, relation->toId, (RelationType)i);
-            if (panelError == NULL) relation->type = (RelationType)i;
+
+            if (panelError == NULL)
+            {
+                PushHistory();
+                relation->type = (RelationType)i;
+            }
         }
     }
     y += 3 * PANEL_ROW_HEIGHT + 2 * PANEL_GAP + PANEL_GAP;
@@ -863,6 +881,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
     y += 18;
     if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, relation->fromMultiplicity, panelFocus == FOCUS_FROM, cursor))
     {
+        if (panelFocus != FOCUS_FROM) PushHistory();
         panelFocus = FOCUS_FROM;
     }
     y += PANEL_FIELD_HEIGHT + PANEL_GAP;
@@ -874,6 +893,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
     y += 18;
     if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, relation->toMultiplicity, panelFocus == FOCUS_TO, cursor))
     {
+        if (panelFocus != FOCUS_TO) PushHistory();
         panelFocus = FOCUS_TO;
     }
     y += PANEL_FIELD_HEIGHT + PANEL_GAP;
@@ -882,6 +902,7 @@ void DrawRelationProperties(Rectangle area, int *cursor)
 
     if (PanelButton((Rectangle){area.x, area.y + area.height - 30, area.width, 28}, "Excluir relacionamento", false, RED, 13, cursor))
     {
+        PushHistory();
         RemoveRelation(selectedRelation);
         ClearRelationSelection();
     }

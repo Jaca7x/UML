@@ -3,6 +3,7 @@
 #include "../include/relations.h"
 #include "../include/uifont.h"
 #include "../include/widgets.h"
+#include "../include/history.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -68,6 +69,36 @@ void ClearClassSelection(void)
 bool HasSelectedClass(void)
 {
     return selectedIndex != -1;
+}
+
+static int FindClassWithEmptyName(void)
+{
+    for (int i = 0; i < clickCount; i++)
+    {
+        if (arrayClass[i].name[0] == '\0') return i;
+    }
+
+    return -1;
+}
+
+bool IsClassNameRequired(void)
+{
+    return FindClassWithEmptyName() != -1;
+}
+
+// Prende a selecao e o foco na classe sem nome, para o campo do painel ser a
+// unica coisa com que o usuario consegue interagir.
+static void FocusClassMissingName(void)
+{
+    int index = FindClassWithEmptyName();
+    if (index == -1) return;
+
+    if (selectedIndex == index && panelFocus == FOCUS_CLASS_NAME) return;
+
+    selectedIndex = index;
+    selectedParam = -1;
+    panelFocus = FOCUS_CLASS_NAME;
+    ClearRelationSelection();
 }
 
 static void SelectClass(int index)
@@ -431,6 +462,7 @@ static bool HandleResize(Vector2 mousePos, int *cursor)
 
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
+            PushHistory();
             resizingIndex = selectedIndex;
             resizingHandle = corner;
             resizeStartBounds = arrayClass[selectedIndex].bounds;
@@ -445,11 +477,27 @@ static bool HandleResize(Vector2 mousePos, int *cursor)
 
 void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
     Vector2 mousePos = GetScreenToWorld2D(GetMousePosition(), camera);
-    bool blocked = IsMouseOverUi() || IsRelationModeArmed() || IsConnectingRelation() || DidRelationsConsumeClick();
+    bool nameRequired = IsClassNameRequired();
+
+    if (nameRequired) FocusClassMissingName();
+
+    bool blocked = nameRequired || IsMouseOverUi() || IsRelationModeArmed()
+                || IsConnectingRelation() || DidRelationsConsumeClick();
 
     for (int i = 0; i < clickCount; i++)
     {
         UpdateClassBoxSize(&arrayClass[i]);
+    }
+
+    // Backspace/Delete so apagam a classe fora de um campo de texto, senao
+    // apagariam a classe enquanto o usuario corrige um nome
+    if (!nameRequired && selectedIndex != -1 && panelFocus == FOCUS_NONE
+        && (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_DELETE)))
+    {
+        PushHistory();
+        RemoveUMLClass(selectedIndex);
+        ClearClassSelection();
+        return;
     }
 
     if (!blocked && !HandleResize(mousePos, cursor))
@@ -458,7 +506,11 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
         {
             *cursor = MOUSE_CURSOR_CROSSHAIR;
 
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) AddUMLClass(mousePos);
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            {
+                PushHistory();
+                AddUMLClass(mousePos);
+            }
         }
         else
         {
@@ -474,6 +526,7 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
                 }
                 else
                 {
+                    PushHistory();
                     SelectClass(hovered);
                     arrayClass[hovered].isDragging = true;
                     arrayClass[hovered].dragOffSet.x = mousePos.x - arrayClass[hovered].bounds.x;
@@ -552,6 +605,9 @@ void DrawClassProperties(Rectangle area, int *cursor)
 
     if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, cls->name, panelFocus == FOCUS_CLASS_NAME, cursor))
     {
+        // Retrato ao entrar no campo: um Ctrl+Z desfaz a edicao inteira do
+        // texto, em vez de uma letra por vez
+        if (panelFocus != FOCUS_CLASS_NAME) PushHistory();
         panelFocus = FOCUS_CLASS_NAME;
     }
     y += PANEL_FIELD_HEIGHT;
@@ -567,7 +623,11 @@ void DrawClassProperties(Rectangle area, int *cursor)
     Rectangle addBtn = {area.x + area.width - 90, y, 90, PANEL_ROW_HEIGHT};
     if (cls->paramCount < MAX_PARAMS)
     {
-        if (PanelButton(addBtn, "+ Adicionar", false, BLUE, 12, cursor)) AddParam(selectedIndex);
+        if (PanelButton(addBtn, "+ Adicionar", false, BLUE, 12, cursor))
+        {
+            PushHistory();
+            AddParam(selectedIndex);
+        }
     }
     else
     {
@@ -593,12 +653,14 @@ void DrawClassProperties(Rectangle area, int *cursor)
 
         if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
+            if (selectedParam != i || panelFocus != FOCUS_PARAM_NAME) PushHistory();
             selectedParam = i;
             panelFocus = FOCUS_PARAM_NAME;
         }
 
         if (PanelButton(removeBtn, "x", false, RED, 12, cursor))
         {
+            PushHistory();
             RemoveParam(selectedIndex, i);
             return;
         }
@@ -623,6 +685,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
             Rectangle rect = {area.x + i * (visWidth + PANEL_GAP), y, visWidth, PANEL_ROW_HEIGHT};
             if (PanelButton(rect, visibilityLabels[i], param->visibility == visibilityChars[i], BLUE, 12, cursor))
             {
+                PushHistory();
                 param->visibility = visibilityChars[i];
             }
         }
@@ -632,6 +695,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
         y += 18;
         if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, param->name, panelFocus == FOCUS_PARAM_NAME, cursor))
         {
+            if (panelFocus != FOCUS_PARAM_NAME) PushHistory();
             panelFocus = FOCUS_PARAM_NAME;
         }
         y += PANEL_FIELD_HEIGHT + 12;
@@ -640,6 +704,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
         y += 18;
         if (PanelField((Rectangle){area.x, y, area.width, PANEL_FIELD_HEIGHT}, param->type, panelFocus == FOCUS_PARAM_TYPE, cursor))
         {
+            if (panelFocus != FOCUS_PARAM_TYPE) PushHistory();
             panelFocus = FOCUS_PARAM_TYPE;
         }
         y += PANEL_FIELD_HEIGHT + PANEL_GAP;
@@ -653,6 +718,7 @@ void DrawClassProperties(Rectangle area, int *cursor)
 
             if (PanelButton(rect, paramTypes[i], strcmp(param->type, paramTypes[i]) == 0, BLUE, 11, cursor))
             {
+                PushHistory();
                 snprintf(param->type, PARAM_TYPE_LEN, "%s", paramTypes[i]);
             }
         }
@@ -663,12 +729,14 @@ void DrawClassProperties(Rectangle area, int *cursor)
 
     if (PanelButton((Rectangle){area.x, buttonsY, buttonWidth, 28}, "Duplicar", false, BLUE, 13, cursor))
     {
+        PushHistory();
         DuplicateUMLClass(selectedIndex);
         return;
     }
 
     if (PanelButton((Rectangle){area.x + buttonWidth + PANEL_GAP, buttonsY, buttonWidth, 28}, "Excluir", false, RED, 13, cursor))
     {
+        PushHistory();
         RemoveUMLClass(selectedIndex);
         ClearClassSelection();
     }

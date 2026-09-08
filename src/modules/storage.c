@@ -2,6 +2,7 @@
 #include "../include/editor.h"
 #include "../include/relations.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Formato de linha unica por elemento, com aspas em volta do que o usuario
@@ -16,24 +17,29 @@
 #define FORMAT_HEADER "# RayUML 1"
 #define LINE_LEN 512
 
-bool SaveDiagram(const char *path)
-{
-    FILE *file = fopen(path, "w");
-    if (file == NULL) return false;
+// Limite superior por elemento, com folga: evita realocar durante a escrita
+#define BYTES_PER_CLASS    2048
+#define BYTES_PER_RELATION  128
 
-    fprintf(file, "%s\n", FORMAT_HEADER);
+char *SerializeDiagram(void)
+{
+    int capacity = 64 + GetClassCount() * BYTES_PER_CLASS + GetRelationCount() * BYTES_PER_RELATION;
+    char *text = (char *)malloc(capacity);
+    if (text == NULL) return NULL;
+
+    int used = snprintf(text, capacity, "%s\n", FORMAT_HEADER);
 
     for (int i = 0; i < GetClassCount(); i++)
     {
         const UMLClass *cls = GetClass(i);
 
-        fprintf(file, "class %d %.2f %.2f %.2f %.2f \"%s\"\n",
-                cls->id, cls->bounds.x, cls->bounds.y, cls->userWidth, cls->userHeight, cls->name);
+        used += snprintf(text + used, capacity - used, "class %d %.2f %.2f %.2f %.2f \"%s\"\n",
+                         cls->id, cls->bounds.x, cls->bounds.y, cls->userWidth, cls->userHeight, cls->name);
 
         for (int p = 0; p < cls->paramCount; p++)
         {
-            fprintf(file, "param %c \"%s\" \"%s\"\n",
-                    cls->params[p].visibility, cls->params[p].name, cls->params[p].type);
+            used += snprintf(text + used, capacity - used, "param %c \"%s\" \"%s\"\n",
+                             cls->params[p].visibility, cls->params[p].name, cls->params[p].type);
         }
     }
 
@@ -41,14 +47,23 @@ bool SaveDiagram(const char *path)
     {
         const UMLRelation *relation = GetRelation(i);
 
-        fprintf(file, "relation %d %d %s \"%s\" \"%s\"\n",
-                relation->fromId, relation->toId, GetRelationTypeKey(relation->type),
-                relation->fromMultiplicity, relation->toMultiplicity);
+        used += snprintf(text + used, capacity - used, "relation %d %d %s \"%s\" \"%s\"\n",
+                         relation->fromId, relation->toId, GetRelationTypeKey(relation->type),
+                         relation->fromMultiplicity, relation->toMultiplicity);
     }
 
-    fclose(file);
+    return text;
+}
 
-    return true;
+bool SaveDiagram(const char *path)
+{
+    char *text = SerializeDiagram();
+    if (text == NULL) return false;
+
+    bool saved = SaveFileText((char *)path, text);
+    free(text);
+
+    return saved;
 }
 
 static bool ReadClassLine(const char *line, int *lastClassIndex)
@@ -96,32 +111,44 @@ static bool ReadRelationLine(const char *line)
     return true;
 }
 
-bool LoadDiagram(const char *path)
+bool DeserializeDiagram(const char *text)
 {
-    FILE *file = fopen(path, "r");
-    if (file == NULL) return false;
-
-    char line[LINE_LEN];
-
-    if (fgets(line, sizeof(line), file) == NULL || strncmp(line, FORMAT_HEADER, strlen(FORMAT_HEADER)) != 0)
-    {
-        fclose(file);
-        return false;
-    }
+    if (text == NULL || strncmp(text, FORMAT_HEADER, strlen(FORMAT_HEADER)) != 0) return false;
 
     ClearAllClasses();
     ClearAllRelations();
 
     int lastClassIndex = -1;
+    const char *cursor = text;
 
-    while (fgets(line, sizeof(line), file) != NULL)
+    while (*cursor != '\0')
     {
+        const char *newline = strchr(cursor, '\n');
+        int length = (newline != NULL) ? (int)(newline - cursor) : (int)strlen(cursor);
+        if (length >= LINE_LEN) length = LINE_LEN - 1;
+
+        char line[LINE_LEN];
+        memcpy(line, cursor, length);
+        line[length] = '\0';
+
         if (strncmp(line, "class ", 6) == 0) ReadClassLine(line, &lastClassIndex);
         else if (strncmp(line, "param ", 6) == 0) ReadParamLine(line, lastClassIndex);
         else if (strncmp(line, "relation ", 9) == 0) ReadRelationLine(line);
+
+        if (newline == NULL) break;
+        cursor = newline + 1;
     }
 
-    fclose(file);
-
     return true;
+}
+
+bool LoadDiagram(const char *path)
+{
+    char *text = LoadFileText((char *)path);
+    if (text == NULL) return false;
+
+    bool loaded = DeserializeDiagram(text);
+    UnloadFileText(text);
+
+    return loaded;
 }

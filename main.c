@@ -5,6 +5,7 @@
 #include "src/include/ui.h"
 #include "src/include/uifont.h"
 #include "src/include/storage.h"
+#include "src/include/history.h"
 #include <math.h>
 
 int main(void) {
@@ -41,6 +42,11 @@ int main(void) {
         if (IsKeyPressed(KEY_ENTER) && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)))
         {
             ToggleFullscreenMode();
+        }
+
+        if (IsKeyPressed(KEY_Z) && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)))
+        {
+            UndoHistory();
         }
 
         if (IsFileDropped())

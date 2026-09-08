@@ -26,6 +26,7 @@ UML/
 │   ├── include/             # Headers públicos dos módulos (.h)
 │   │   ├── editor.h          # UMLClass, UMLParam e API das classes
 │   │   ├── relations.h       # UMLRelation, RelationType e API dos relacionamentos
+│   │   ├── history.h         # Desfazer (Ctrl+Z)
 │   │   ├── storage.h         # Salvar e carregar o diagrama em arquivo
 │   │   ├── renderer.h        # Desenho do mundo (grid)
 │   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
@@ -135,6 +136,26 @@ salvar.
 não pelo valor numérico do enum: reordenar os tipos invalidaria os arquivos
 já salvos.
 
+### `history` (`history.h` / `history.c`)
+
+Desfazer por **retrato**: cada passo guarda o diagrama inteiro serializado
+pelo `storage`, e `Ctrl+Z` restaura o anterior. A alternativa (guardar a
+operação inversa de cada ação) gasta menos memória, mas exige tratar cada
+tipo de ação separadamente — mais código e mais chance de erro para um
+diagrama deste tamanho.
+
+Reaproveitar a serialização do `storage` evita uma segunda implementação que
+poderia divergir da primeira.
+
+`PushHistory()` deve ser chamado **antes** de qualquer alteração. Retratos
+idênticos ao passo anterior são descartados, então chamar em excesso não
+enche o histórico de passos vazios — é o que permite chamá-lo no início de um
+arrasto sem saber ainda se a classe vai se mover.
+
+**Granularidade da digitação:** o retrato é tirado quando um campo de texto
+recebe o foco, não a cada tecla. Assim um `Ctrl+Z` desfaz a edição inteira
+daquele campo em vez de uma letra por vez.
+
 ### `renderer` (`renderer.h` / `renderer.c`)
 
 Desenho de mundo que não é estado do diagrama — hoje, o grid de fundo.
@@ -167,11 +188,12 @@ cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 - [x] Relacionamentos com multiplicidade
 - [x] Painel de propriedades com edição ao vivo
 - [x] Salvar e carregar o diagrama
+- [x] Desfazer (Ctrl+Z)
 - [ ] Exportar o diagrama como imagem
 - [ ] Exportar para PlantUML
 - [ ] Métodos da classe (terceiro compartimento; o campo `methods` já existe
       na struct mas não é usado)
-- [ ] Desfazer/refazer
+- [ ] Refazer (Ctrl+Y)
 - [ ] Seleção múltipla e alinhamento na grade
 
 Consulte também [BUILD.md](BUILD.md) e [CONVENTIONS.md](CONVENTIONS.md).

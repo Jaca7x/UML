@@ -103,7 +103,7 @@ static void DrawMenuButton(Rectangle button, const char *label, bool isArmed, in
         textColor = BLUE;
         *cursor = MOUSE_CURSOR_POINTING_HAND;
 
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) onClick();
+        if (!IsClassNameRequired() && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) onClick();
     }
 
     if (isArmed) { borderColor = BLUE; textColor = BLUE; }
@@ -139,6 +139,29 @@ void DrawUi(int *cursor) {
     {
         float statusX = GetButtonBounds(MENU_BUTTON_COUNT - 1).x + BUTTON_WIDTH + 20;
         DrawUiText(statusMessage, statusX, (MENU_BAR_HEIGHT - 14) / 2.0f, 14, statusColor);
+    }
+
+    // Cobre o canvas, mas nao o painel: o campo do nome fica sendo a unica
+    // coisa com que da para interagir
+    if (IsClassNameRequired())
+    {
+        Rectangle canvas = {0, MENU_BAR_HEIGHT, panel.x, (float)GetScreenHeight() - MENU_BAR_HEIGHT};
+        DrawRectangleRec(canvas, Fade(BLACK, 0.55f));
+
+        const char *title = "Esta classe precisa de um nome";
+        const char *hint = "Preencha o campo Nome da classe no painel ao lado para continuar.";
+
+        int titleWidth = MeasureUiText(title, 16);
+        int hintWidth = MeasureUiText(hint, 14);
+        int boxWidth = ((titleWidth > hintWidth) ? titleWidth : hintWidth) + 48;
+
+        Rectangle warning = {canvas.x + (canvas.width - boxWidth) / 2.0f,
+                             canvas.y + canvas.height / 2.0f - 45, (float)boxWidth, 90};
+
+        DrawRectangleRec(warning, RAYWHITE);
+        DrawRectangleLinesEx(warning, 3, RED);
+        DrawUiText(title, warning.x + (warning.width - titleWidth) / 2.0f, warning.y + 24, 16, RED);
+        DrawUiText(hint, warning.x + (warning.width - hintWidth) / 2.0f, warning.y + 52, 14, BLACK);
     }
 
     DrawRectangleRec(panel, PANEL_BACKGROUND);
