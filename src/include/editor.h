@@ -30,6 +30,7 @@ typedef struct
     float userWidth;
     float userHeight;
 
+    bool isSelected;
     bool isDragging;
     Vector2 dragOffSet;
 }UMLClass;
@@ -39,6 +40,7 @@ bool IsPlacingClass(void);
 void UpdateAndDrawBoxes(Camera2D camera, int *cursor);
 
 bool HasSelectedClass(void);
+int GetSelectedClassCount(void);
 void ClearClassSelection(void);
 void DrawClassProperties(Rectangle area, int *cursor);
 
