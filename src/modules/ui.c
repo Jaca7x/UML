@@ -23,6 +23,9 @@
 #define STATUS_DURATION 2.5
 #define STATUS_LEN       96
 
+#define MAX_LISTED_FILES  10
+#define FILE_ROW_HEIGHT   26
+
 #define PANEL_WIDTH     300
 #define PANEL_PADDING    14
 
@@ -35,6 +38,10 @@ static bool fileNameFocused = false;
 // Carregar por cima de alteracoes pendentes precisa de confirmacao; fechar a
 // janela nao da, porque a raylib nao permite cancelar o fechamento.
 static bool confirmingLoad = false;
+
+// Lista de arquivos do diretorio: evita ter que lembrar o nome para abrir
+static bool browsingFiles = false;
+static char pendingLoadPath[DIAGRAM_PATH_LEN] = {0};
 
 static char statusMessage[STATUS_LEN] = {0};
 static Color statusColor = BLACK;
@@ -59,20 +66,39 @@ void ShowUiStatus(const char *message, bool success)
 
 static void SaveToField(void)
 {
-    if (SaveDiagram(fileNameField)) SetStatus("Diagrama salvo", ThemeSuccess());
+    if (SaveDiagram(fileNameField))
+    {
+        // Mostra o nome com a extensao que o sistema completou
+        snprintf(fileNameField, sizeof(fileNameField), "%s", GetCurrentDiagramPath());
+        SetStatus("Diagrama salvo", ThemeSuccess());
+    }
     else SetStatus("Nao foi possivel salvar o arquivo", ThemeDanger());
 }
 
-static void LoadFromField(void)
+static void LoadPendingFile(void)
 {
-    if (LoadDiagram(fileNameField)) SetStatus("Diagrama carregado", ThemeSuccess());
-    else SetStatus("Nao encontrei o arquivo", ThemeDanger());
+    if (LoadDiagram(pendingLoadPath))
+    {
+        // O campo acompanha o arquivo aberto, para salvar voltar nele sem redigitar
+        snprintf(fileNameField, sizeof(fileNameField), "%s", pendingLoadPath);
+        SetStatus("Diagrama carregado", ThemeSuccess());
+    }
+    else SetStatus("Nao foi possivel abrir o arquivo", ThemeDanger());
 }
 
+// Abrir sempre passa pela lista; a confirmacao so entra se houver risco de perda
 static void RequestLoad(void)
 {
+    browsingFiles = true;
+}
+
+static void ChooseFile(const char *path)
+{
+    snprintf(pendingLoadPath, sizeof(pendingLoadPath), "%s", path);
+    browsingFiles = false;
+
     if (IsDiagramDirty()) confirmingLoad = true;
-    else LoadFromField();
+    else LoadPendingFile();
 }
 
 void ToggleFullscreenMode(void)
@@ -120,7 +146,7 @@ bool IsMouseOverUi(void)
 
     // Com o dialogo aberto a interface e dona de todo o input, nao so das
     // suas regioes
-    if (confirmingLoad) return true;
+    if (confirmingLoad || browsingFiles) return true;
 
     return CheckCollisionPointRec(mouse, GetMenuBarBounds()) || CheckCollisionPointRec(mouse, GetPanelBounds());
 }
@@ -420,6 +446,69 @@ void DrawUi(int *cursor) {
     content.y += 34;
     content.height -= 34;
 
+    if (browsingFiles)
+    {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
+
+        FilePathList files = LoadDirectoryFilesEx(".", ".ruml", false);
+
+        int visible = (files.count > MAX_LISTED_FILES) ? MAX_LISTED_FILES : (int)files.count;
+        float listHeight = (visible > 0) ? visible * (FILE_ROW_HEIGHT + 4) : 30.0f;
+
+        Rectangle box = {(GetScreenWidth() - 360) / 2.0f, GetScreenHeight() / 2.0f - (listHeight + 110) / 2.0f,
+                         360, listHeight + 110};
+
+        DrawRectangleRec(box, ThemeSurface());
+        DrawRectangleLinesEx(box, 2, ThemeAccent());
+        DrawUiText("Abrir diagrama", box.x + 20, box.y + 18, 16, ThemeText());
+
+        float rowY = box.y + 48;
+
+        if (files.count == 0)
+        {
+            DrawUiText("Nenhum arquivo .ruml nesta pasta", box.x + 20, rowY + 6, 13, ThemeTextMuted());
+        }
+
+        for (int i = 0; i < visible; i++)
+        {
+            Rectangle row = {box.x + 20, rowY, box.width - 40, FILE_ROW_HEIGHT};
+            const char *name = GetFileName(files.paths[i]);
+
+            bool hover = CheckCollisionPointRec(GetMousePosition(), row);
+            if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
+
+            DrawRectangleRec(row, hover ? Fade(ThemeAccent(), 0.20f) : ThemeSurface());
+            DrawRectangleLinesEx(row, 1, hover ? ThemeAccent() : ThemeBorder());
+            DrawUiText(name, row.x + 10, row.y + 6, 13, ThemeText());
+
+            if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            {
+                ChooseFile(files.paths[i]);
+                UnloadDirectoryFiles(files);
+                return;
+            }
+
+            rowY += FILE_ROW_HEIGHT + 4;
+        }
+
+        if ((int)files.count > visible)
+        {
+            char extra[64];
+            snprintf(extra, sizeof(extra), "e mais %d arquivo(s)", (int)files.count - visible);
+            DrawUiText(extra, box.x + 20, rowY + 2, 12, ThemeTextMuted());
+        }
+
+        UnloadDirectoryFiles(files);
+
+        if (PanelButton((Rectangle){box.x + box.width - 120, box.y + box.height - 42, 100, 30},
+                        "Cancelar", false, ThemeBorder(), 13, cursor))
+        {
+            browsingFiles = false;
+        }
+
+        return;
+    }
+
     if (confirmingLoad)
     {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
@@ -440,14 +529,14 @@ void DrawUi(int *cursor) {
                         false, ThemeAccent(), 13, cursor))
         {
             SaveToField();
-            LoadFromField();
+            LoadPendingFile();
             confirmingLoad = false;
         }
 
         if (PanelButton((Rectangle){box.x + 30 + buttonWidth, buttonY, buttonWidth, 30}, "Descartar",
                         false, ThemeDanger(), 13, cursor))
         {
-            LoadFromField();
+            LoadPendingFile();
             confirmingLoad = false;
         }
 

@@ -5,6 +5,7 @@
 #define DEFAULT_DIAGRAM_PATH  "diagrama.ruml"
 #define RECOVERY_DIAGRAM_PATH "recuperacao.ruml"
 #define DIAGRAM_PATH_LEN 128
+#define DIAGRAM_EXTENSION ".ruml"
 
 // Serializa o diagrama inteiro. Devolve buffer alocado (quem chama libera),
 // ou NULL se faltar memoria. Usado tambem pelo historico de desfazer.

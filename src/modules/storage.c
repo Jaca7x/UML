@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 // Formato de linha unica por elemento, com aspas em volta do que o usuario
 // digita (nome e tipo aceitam espaco). Os `param` pertencem sempre a ultima
@@ -30,6 +31,33 @@ const char *GetCurrentDiagramPath(void)
 void SetCurrentDiagramPath(const char *path)
 {
     snprintf(currentPath, sizeof(currentPath), "%s", path);
+}
+
+// Exigir que o usuario digite a extensao faz ele perder o arquivo: sem ela o
+// arquivo nao aparece na lista de abrir.
+static void NormalizeDiagramPath(const char *path, char *out, int outSize)
+{
+    while (*path == ' ') path++;
+
+    int length = (int)strlen(path);
+    while (length > 0 && path[length - 1] == ' ') length--;
+
+    if (length == 0)
+    {
+        snprintf(out, outSize, "%s", DEFAULT_DIAGRAM_PATH);
+        return;
+    }
+
+    int extension = (int)strlen(DIAGRAM_EXTENSION);
+    bool hasExtension = (length > extension);
+
+    for (int i = 0; i < extension && hasExtension; i++)
+    {
+        if (tolower(path[length - extension + i]) != DIAGRAM_EXTENSION[i]) hasExtension = false;
+    }
+
+    if (hasExtension) snprintf(out, outSize, "%.*s", length, path);
+    else snprintf(out, outSize, "%.*s%s", length, path, DIAGRAM_EXTENSION);
 }
 
 static void MarkDiagramSaved(void)
@@ -94,12 +122,15 @@ bool SaveDiagram(const char *path)
     char *text = SerializeDiagram();
     if (text == NULL) return false;
 
-    bool saved = SaveFileText((char *)path, text);
+    char normalized[DIAGRAM_PATH_LEN];
+    NormalizeDiagramPath(path, normalized, sizeof(normalized));
+
+    bool saved = SaveFileText(normalized, text);
     free(text);
 
     if (saved)
     {
-        SetCurrentDiagramPath(path);
+        SetCurrentDiagramPath(normalized);
         MarkDiagramSaved();
     }
 
