@@ -133,6 +133,55 @@ Rectangle GetClassBounds(int index)
     return arrayClass[index].bounds;
 }
 
+const UMLClass *GetClass(int index)
+{
+    return &arrayClass[index];
+}
+
+void ClearAllClasses(void)
+{
+    free(arrayClass);
+    arrayClass = NULL;
+    clickCount = 0;
+    nextClassId = 1;
+
+    ClearClassSelection();
+}
+
+int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth, float userHeight)
+{
+    clickCount++;
+    arrayClass = (UMLClass *)realloc(arrayClass, clickCount * sizeof(UMLClass));
+
+    UMLClass *loaded = &arrayClass[clickCount - 1];
+    loaded->id = id;
+    loaded->bounds = bounds;
+    loaded->userWidth = userWidth;
+    loaded->userHeight = userHeight;
+    loaded->isDragging = false;
+    loaded->paramCount = 0;
+    loaded->methods[0] = '\0';
+    snprintf(loaded->name, CLASS_NAME_LEN, "%s", name);
+
+    // Ids do arquivo nao podem colidir com os das proximas classes criadas
+    if (id >= nextClassId) nextClassId = id + 1;
+
+    return clickCount - 1;
+}
+
+void AddParamToClass(int index, char visibility, const char *name, const char *type)
+{
+    UMLClass *cls = &arrayClass[index];
+    if (cls->paramCount >= MAX_PARAMS) return;
+
+    UMLParam *param = &cls->params[cls->paramCount];
+    param->visibility = visibility;
+    snprintf(param->name, PARAM_NAME_LEN, "%s", name);
+    snprintf(param->type, PARAM_TYPE_LEN, "%s", type);
+
+    cls->paramCount++;
+}
+
 static void AddUMLClass(Vector2 position)
 {
     clickCount++;

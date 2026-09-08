@@ -2,12 +2,18 @@
 #include "editor.h"
 #include "relations.h"
 #include "uifont.h"
+#include "storage.h"
+#include <stdio.h>
 
 #define MENU_BAR_HEIGHT 50
 #define BUTTON_PADDING   10
 #define BUTTON_WIDTH    120
 #define BUTTON_HEIGHT    30
 #define BUTTON_GAP        8
+#define MENU_BUTTON_COUNT 5
+
+#define STATUS_DURATION 2.5
+#define STATUS_LEN       96
 
 #define PANEL_WIDTH     300
 #define PANEL_PADDING    14
@@ -16,6 +22,34 @@
 
 static int windowedWidth = 0;
 static int windowedHeight = 0;
+
+static char statusMessage[STATUS_LEN] = {0};
+static Color statusColor = BLACK;
+static double statusUntil = 0.0;
+
+static void SetStatus(const char *message, Color color)
+{
+    snprintf(statusMessage, sizeof(statusMessage), "%s", message);
+    statusColor = color;
+    statusUntil = GetTime() + STATUS_DURATION;
+}
+
+void ShowUiStatus(const char *message, bool success)
+{
+    SetStatus(message, success ? DARKGREEN : MAROON);
+}
+
+static void SaveToDefaultFile(void)
+{
+    if (SaveDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama salvo em " DEFAULT_DIAGRAM_PATH, DARKGREEN);
+    else SetStatus("Nao foi possivel salvar o arquivo", MAROON);
+}
+
+static void LoadFromDefaultFile(void)
+{
+    if (LoadDiagram(DEFAULT_DIAGRAM_PATH)) SetStatus("Diagrama carregado", DARKGREEN);
+    else SetStatus("Nao encontrei " DEFAULT_DIAGRAM_PATH, MAROON);
+}
 
 void ToggleFullscreenMode(void)
 {
@@ -89,15 +123,23 @@ void DrawUi(int *cursor) {
 
     DrawMenuButton(GetButtonBounds(0), "Criar Classe", IsPlacingClass(), cursor, ArmClassPlacement);
     DrawMenuButton(GetButtonBounds(1), "Relacionar", IsRelationModeArmed(), cursor, ArmRelationMode);
-    DrawMenuButton(GetButtonBounds(2), "Tela Cheia", IsWindowFullscreen(), cursor, ToggleFullscreenMode);
+    DrawMenuButton(GetButtonBounds(2), "Salvar", false, cursor, SaveToDefaultFile);
+    DrawMenuButton(GetButtonBounds(3), "Carregar", false, cursor, LoadFromDefaultFile);
+    DrawMenuButton(GetButtonBounds(4), "Tela Cheia", IsWindowFullscreen(), cursor, ToggleFullscreenMode);
 
     bool overButton = false;
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < MENU_BUTTON_COUNT; i++)
     {
         if (CheckCollisionPointRec(GetMousePosition(), GetButtonBounds(i))) overButton = true;
     }
 
     if (!overButton && CheckCollisionPointRec(GetMousePosition(), menuBar)) *cursor = MOUSE_CURSOR_DEFAULT;
+
+    if (GetTime() < statusUntil)
+    {
+        float statusX = GetButtonBounds(MENU_BUTTON_COUNT - 1).x + BUTTON_WIDTH + 20;
+        DrawUiText(statusMessage, statusX, (MENU_BAR_HEIGHT - 14) / 2.0f, 14, statusColor);
+    }
 
     DrawRectangleRec(panel, PANEL_BACKGROUND);
     DrawLine(panel.x, panel.y, panel.x, panel.y + panel.height, GRAY);

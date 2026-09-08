@@ -35,4 +35,12 @@ bool HasSelectedRelation(void);
 void ClearRelationSelection(void);
 void DrawRelationProperties(Rectangle area, int *cursor);
 
+// Usados na leitura/escrita de arquivo
+int GetRelationCount(void);
+const UMLRelation *GetRelation(int index);
+void ClearAllRelations(void);
+void AddRelationFromData(int fromId, int toId, RelationType type, const char *fromMultiplicity, const char *toMultiplicity);
+const char *GetRelationTypeKey(RelationType type);
+RelationType ParseRelationTypeKey(const char *key);
+
 #endif

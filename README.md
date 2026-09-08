@@ -6,8 +6,8 @@ Software para criação de diagramas UML, feito em **C** com
 ## Status
 
 Em desenvolvimento. Já é possível montar um diagrama de classes completo —
-classes com atributos tipados e relacionamentos com multiplicidade — mas o
-diagrama ainda **não pode ser salvo**.
+classes com atributos tipados e relacionamentos com multiplicidade — e salvar
+o resultado em arquivo.
 
 ## Funcionalidades
 
@@ -18,6 +18,8 @@ diagrama ainda **não pode ser salvo**.
   dependência e realização) com multiplicidade nas duas pontas. As linhas
   ancoram nas bordas e acompanham as classes ao arrastar.
 - Painel de propriedades lateral com edição ao vivo.
+- Salvar e carregar em `diagrama.ruml` (formato de texto legível). Para abrir
+  outro arquivo, arraste-o para dentro da janela.
 - Tela cheia pelo botão ou `Alt + Enter`.
 
 ## Como compilar e rodar

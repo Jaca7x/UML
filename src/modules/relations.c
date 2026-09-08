@@ -122,6 +122,59 @@ void ArmRelationMode(void)
     }
 }
 
+// Chaves gravadas no arquivo. Nao usar o valor numerico do enum: reordenar
+// os tipos invalidaria todos os diagramas ja salvos.
+static const char *relationKeys[RELATION_TYPE_COUNT] = {
+    "associacao", "heranca", "agregacao", "composicao", "dependencia", "realizacao"
+};
+
+const char *GetRelationTypeKey(RelationType type)
+{
+    return relationKeys[type];
+}
+
+RelationType ParseRelationTypeKey(const char *key)
+{
+    for (int i = 0; i < RELATION_TYPE_COUNT; i++)
+    {
+        if (strcmp(key, relationKeys[i]) == 0) return (RelationType)i;
+    }
+
+    return RELATION_ASSOCIATION;
+}
+
+int GetRelationCount(void)
+{
+    return relationCount;
+}
+
+const UMLRelation *GetRelation(int index)
+{
+    return &relations[index];
+}
+
+void ClearAllRelations(void)
+{
+    free(relations);
+    relations = NULL;
+    relationCount = 0;
+
+    ClearRelationSelection();
+}
+
+void AddRelationFromData(int fromId, int toId, RelationType type, const char *fromMultiplicity, const char *toMultiplicity)
+{
+    relationCount++;
+    relations = (UMLRelation *)realloc(relations, relationCount * sizeof(UMLRelation));
+
+    UMLRelation *loaded = &relations[relationCount - 1];
+    loaded->fromId = fromId;
+    loaded->toId = toId;
+    loaded->type = type;
+    snprintf(loaded->fromMultiplicity, MULTIPLICITY_LEN, "%s", fromMultiplicity);
+    snprintf(loaded->toMultiplicity, MULTIPLICITY_LEN, "%s", toMultiplicity);
+}
+
 static void RemoveRelation(int index)
 {
     for (int i = index; i < relationCount - 1; i++)

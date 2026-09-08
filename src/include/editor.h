@@ -48,4 +48,10 @@ int FindClassIndexById(int id);
 int GetClassIndexAt(Vector2 worldPos);
 Rectangle GetClassBounds(int index);
 
+// Usados na leitura/escrita de arquivo
+const UMLClass *GetClass(int index);
+void ClearAllClasses(void);
+int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth, float userHeight);
+void AddParamToClass(int index, char visibility, const char *name, const char *type);
+
 #endif
