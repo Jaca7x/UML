@@ -95,8 +95,11 @@ char *SerializeDiagram(void)
     {
         const UMLClass *cls = GetClass(i);
 
-        used += snprintf(text + used, capacity - used, "class %d %.2f %.2f %.2f %.2f \"%s\"\n",
-                         cls->id, cls->bounds.x, cls->bounds.y, cls->userWidth, cls->userHeight, cls->name);
+        // O tipo vai depois do nome: arquivos antigos sem esse campo continuam
+        // validos e caem no padrao "classe"
+        used += snprintf(text + used, capacity - used, "class %d %.2f %.2f %.2f %.2f \"%s\" %s\n",
+                         cls->id, cls->bounds.x, cls->bounds.y, cls->userWidth, cls->userHeight,
+                         cls->name, GetClassKindKey(cls->kind));
 
         for (int p = 0; p < cls->paramCount; p++)
         {
@@ -188,9 +191,15 @@ static bool ReadClassLine(const char *line, int *lastClassIndex)
     if (sscanf(line, "class %d %f %f %f %f", &id, &x, &y, &userWidth, &userHeight) != 5) return false;
     ExtractQuoted(line, 0, name, sizeof(name));
 
+    // O tipo aparece depois das aspas de fechamento do nome
+    char kindKey[32] = {0};
+    const char *afterName = strchr(line, '"');
+    if (afterName != NULL) afterName = strchr(afterName + 1, '"');
+    if (afterName != NULL) sscanf(afterName + 1, " %31s", kindKey);
+
     // Largura e altura reais sao recalculadas a partir do conteudo no proximo frame
     Rectangle bounds = {x, y, 0.0f, 0.0f};
-    *lastClassIndex = AddClassFromData(id, name, bounds, userWidth, userHeight);
+    *lastClassIndex = AddClassFromData(id, name, ParseClassKindKey(kindKey), bounds, userWidth, userHeight);
 
     return true;
 }

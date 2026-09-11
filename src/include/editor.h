@@ -19,6 +19,15 @@ typedef struct
     char type[PARAM_TYPE_LEN];
 }UMLParam;
 
+typedef enum
+{
+    CLASS_KIND_CLASS = 0,
+    CLASS_KIND_ABSTRACT,
+    CLASS_KIND_INTERFACE,
+    CLASS_KIND_ENUM,
+    CLASS_KIND_COUNT
+}ClassKind;
+
 typedef struct
 {
     char visibility;
@@ -35,6 +44,7 @@ typedef struct
     int id;
 
     char name[CLASS_NAME_LEN];
+    ClassKind kind;
     UMLParam params[MAX_PARAMS];
     int paramCount;
     UMLMethod methods[MAX_METHODS];
@@ -70,11 +80,15 @@ int GetClassIdByIndex(int index);
 int FindClassIndexById(int id);
 int GetClassIndexAt(Vector2 worldPos);
 Rectangle GetClassBounds(int index);
+ClassKind GetClassKind(int index);
+
+const char *GetClassKindKey(ClassKind kind);
+ClassKind ParseClassKindKey(const char *key);
 
 // Usados na leitura/escrita de arquivo
 const UMLClass *GetClass(int index);
 void ClearAllClasses(void);
-int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth, float userHeight);
+int AddClassFromData(int id, const char *name, ClassKind kind, Rectangle bounds, float userWidth, float userHeight);
 void AddParamToClass(int index, char visibility, const char *name, const char *type);
 void AddMethodToClass(int index, char visibility, const char *name, const char *args, const char *returnType);
 
