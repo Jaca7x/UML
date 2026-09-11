@@ -4,6 +4,7 @@
 #include "uifont.h"
 #include "theme.h"
 #include "storage.h"
+#include "codegen.h"
 #include "widgets.h"
 #include <stdio.h>
 #include <string.h>
@@ -73,6 +74,22 @@ static void SaveToField(void)
         SetStatus("Diagrama salvo", ThemeSuccess());
     }
     else SetStatus("Nao foi possivel salvar o arquivo", ThemeDanger());
+}
+
+static void GenerateCode(void)
+{
+    int files = 0;
+
+    if (GenerateJavaCode(&files))
+    {
+        char message[STATUS_LEN];
+        snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, CODEGEN_FOLDER);
+        SetStatus(message, ThemeSuccess());
+    }
+    else
+    {
+        SetStatus("Crie ao menos uma classe antes de gerar", ThemeDanger());
+    }
 }
 
 static void LoadPendingFile(void)
@@ -163,7 +180,8 @@ typedef enum
     ICON_LOAD,
     ICON_FULLSCREEN,
     ICON_THEME,
-    ICON_GRID
+    ICON_GRID,
+    ICON_CODE
 }IconKind;
 
 static void IconClass(Rectangle a, Color tint)
@@ -245,6 +263,25 @@ static void IconGrid(Rectangle a, Color tint)
     DrawRectangleLinesEx(a, ICON_THICKNESS, tint);
 }
 
+static void IconCode(Rectangle a, Color tint)
+{
+    float mid = a.y + a.height / 2.0f;
+    float arm = a.width * 0.22f;
+
+    // { a esquerda e } a direita
+    for (int side = 0; side < 2; side++)
+    {
+        float x = (side == 0) ? a.x + arm : a.x + a.width - arm;
+        float dir = (side == 0) ? 1.0f : -1.0f;
+
+        DrawLineEx((Vector2){x, a.y}, (Vector2){x - dir * arm * 0.6f, a.y}, ICON_THICKNESS, tint);
+        DrawLineEx((Vector2){x - dir * arm * 0.6f, a.y}, (Vector2){x - dir * arm * 0.6f, mid - 2}, ICON_THICKNESS, tint);
+        DrawLineEx((Vector2){x - dir * arm * 0.6f, mid + 2}, (Vector2){x - dir * arm * 0.6f, a.y + a.height}, ICON_THICKNESS, tint);
+        DrawLineEx((Vector2){x - dir * arm * 0.6f, a.y + a.height}, (Vector2){x, a.y + a.height}, ICON_THICKNESS, tint);
+        DrawLineEx((Vector2){x - dir * arm * 1.2f, mid}, (Vector2){x - dir * arm * 0.6f, mid}, ICON_THICKNESS, tint);
+    }
+}
+
 static void DrawIcon(IconKind kind, Rectangle area, Color tint)
 {
     switch (kind)
@@ -255,6 +292,7 @@ static void DrawIcon(IconKind kind, Rectangle area, Color tint)
         case ICON_LOAD:       IconArrowTray(area, tint, -1); break;
         case ICON_FULLSCREEN: IconFullscreen(area, tint); break;
         case ICON_THEME:      IconTheme(area, tint); break;
+        case ICON_CODE:       IconCode(area, tint); break;
         default:              IconGrid(area, tint); break;
     }
 }
@@ -277,7 +315,8 @@ typedef struct
 
 static const ToolbarButton fileButtons[] = {
     {ICON_SAVE, "salvar", NULL, SaveToField},
-    {ICON_LOAD, "abrir",  NULL, RequestLoad}
+    {ICON_LOAD, "abrir",  NULL, RequestLoad},
+    {ICON_CODE, "gerar",  NULL, GenerateCode}
 };
 
 static const ToolbarButton insertButtons[] = {
@@ -292,7 +331,7 @@ static const ToolbarButton viewButtons[] = {
 };
 
 static const ToolbarTab tabs[] = {
-    {"Arquivo", fileButtons,   2},
+    {"Arquivo", fileButtons,   3},
     {"Inserir", insertButtons, 2},
     {"Exibir",  viewButtons,   3}
 };
