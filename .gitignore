@@ -56,3 +56,7 @@ dkms.conf
 
 # Arquivo de trabalho padrao do editor (diagramas de exemplo podem ser versionados)
 /diagrama.ruml
+
+# Codigo gerado a partir do diagrama
+/codigo/
+/recuperacao.ruml

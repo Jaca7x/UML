@@ -1,0 +1,23 @@
+# RayUML 1
+class 1 -450.00 -250.00 0.00 0.00 "Pagavel" interface
+method + "pagar" "double valor" "void"
+method + "saldoDevedor" "" "double"
+class 2 -100.00 -250.00 0.00 0.00 "Animal" abstrata
+param - "nome" "String"
+param # "idade" "int"
+method + "dormir" "" "void"
+method + "emitirSom" "" "void"
+class 3 -100.00 50.00 0.00 0.00 "Cachorro" classe
+param - "raca" "String"
+method + "latir" "" "void"
+class 4 300.00 50.00 0.00 0.00 "Dono" classe
+param - "nome" "String"
+param - "cpf" "String"
+method + "adotar" "Cachorro animal" "bool"
+class 5 300.00 -250.00 0.00 0.00 "Status" enum
+param + "ATIVO" ""
+param + "INATIVO" ""
+param + "ADOTADO" ""
+relation 3 2 heranca "" ""
+relation 3 1 realizacao "" ""
+relation 4 3 agregacao "1" "0..*"
