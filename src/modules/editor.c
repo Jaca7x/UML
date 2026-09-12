@@ -16,6 +16,8 @@
 #define BASE_BOX_WIDTH  150
 #define MAX_BOX_WIDTH   300
 #define NAME_LINE_HEIGHT 20
+#define STEREOTYPE_FONT       12
+#define STEREOTYPE_LINE_HEIGHT 16
 
 #define PARAM_FONT_SIZE     14
 #define PARAM_LINE_HEIGHT   18
@@ -49,6 +51,10 @@ static const char *paramTypes[PARAM_TYPE_COUNT] = {
     "int", "long", "float", "double", "bool",
     "char", "String", "Date", "List", "void"
 };
+
+// Chaves gravadas no arquivo: reordenar o enum nao pode invalidar diagramas salvos
+static const char *classKindKeys[CLASS_KIND_COUNT] = {"classe", "abstrata", "interface", "enum"};
+static const char *classKindLabels[CLASS_KIND_COUNT] = {"Classe", "Abstrata", "Interface", "Enum"};
 
 static const char visibilityChars[3] = {'-', '+', '#'};
 static const char *visibilityLabels[3] = {"- priv", "+ pub", "# prot"};
@@ -245,6 +251,38 @@ Rectangle GetClassBounds(int index)
     return arrayClass[index].bounds;
 }
 
+ClassKind GetClassKind(int index)
+{
+    return arrayClass[index].kind;
+}
+
+const char *GetClassKindKey(ClassKind kind)
+{
+    return classKindKeys[kind];
+}
+
+ClassKind ParseClassKindKey(const char *key)
+{
+    for (int i = 0; i < CLASS_KIND_COUNT; i++)
+    {
+        if (strcmp(key, classKindKeys[i]) == 0) return (ClassKind)i;
+    }
+
+    return CLASS_KIND_CLASS;
+}
+
+// Linha do estereotipo acima do nome. A UML permite {abstract} como
+// alternativa ao nome em italico, que nao temos: a fonte carregada nao tem
+// variante italica.
+static const char *GetStereotype(const UMLClass *cls)
+{
+    if (cls->kind == CLASS_KIND_INTERFACE) return "\xc2\xab" "interface" "\xc2\xbb";
+    if (cls->kind == CLASS_KIND_ENUM) return "\xc2\xab" "enum" "\xc2\xbb";
+    if (cls->kind == CLASS_KIND_ABSTRACT) return "{abstract}";
+
+    return NULL;
+}
+
 const UMLClass *GetClass(int index)
 {
     return &arrayClass[index];
@@ -260,13 +298,14 @@ void ClearAllClasses(void)
     ClearClassSelection();
 }
 
-int AddClassFromData(int id, const char *name, Rectangle bounds, float userWidth, float userHeight)
+int AddClassFromData(int id, const char *name, ClassKind kind, Rectangle bounds, float userWidth, float userHeight)
 {
     clickCount++;
     arrayClass = (UMLClass *)realloc(arrayClass, clickCount * sizeof(UMLClass));
 
     UMLClass *loaded = &arrayClass[clickCount - 1];
     loaded->id = id;
+    loaded->kind = kind;
     loaded->bounds = bounds;
     loaded->userWidth = userWidth;
     loaded->userHeight = userHeight;
@@ -307,6 +346,7 @@ static void AddUMLClass(Vector2 position)
     newClass->bounds.y = SnapValue(position.y - newClass->bounds.height / 2.0f);
 
     newClass->id = nextClassId++;
+    newClass->kind = CLASS_KIND_CLASS;
     newClass->isSelected = false;
     newClass->isDragging = false;
     newClass->userWidth = 0.0f;
@@ -509,11 +549,24 @@ static float GetNameSectionHeight(int lines)
     return NAME_PADDING + lines * NAME_LINE_HEIGHT + 6;
 }
 
+static float GetStereotypeHeight(const UMLClass *cls)
+{
+    return (GetStereotype(cls) != NULL) ? STEREOTYPE_LINE_HEIGHT : 0.0f;
+}
+
 static void GetContentSize(const UMLClass *cls, float *outWidth, float *outHeight)
 {
     char buf[TEXT_BUFFER_LEN * 2];
     int nameLines = GetWrappedText(cls->name, NAME_FONT_SIZE, GetTextMaxWidth(), buf, sizeof(buf));
     int width = MeasureUiText(cls->name, NAME_FONT_SIZE) + NAME_PADDING * 2;
+
+    const char *stereotype = GetStereotype(cls);
+    if (stereotype != NULL)
+    {
+        int stereotypeWidth = MeasureUiText(stereotype, STEREOTYPE_FONT) + NAME_PADDING * 2;
+        if (stereotypeWidth > width) width = stereotypeWidth;
+    }
+
     float paramsHeight = PARAMS_PADDING * 2;
 
     for (int i = 0; i < cls->paramCount; i++)
@@ -546,7 +599,7 @@ static void GetContentSize(const UMLClass *cls, float *outWidth, float *outHeigh
     if (width > MAX_BOX_WIDTH) width = MAX_BOX_WIDTH;
 
     *outWidth = (float)width;
-    *outHeight = GetNameSectionHeight(nameLines) + paramsHeight + methodsHeight;
+    *outHeight = GetStereotypeHeight(cls) + GetNameSectionHeight(nameLines) + paramsHeight + methodsHeight;
 }
 
 static void UpdateClassBoxSize(UMLClass *cls)
@@ -782,10 +835,23 @@ void UpdateAndDrawBoxes(Camera2D camera, int *cursor) {
 
         char display[TEXT_BUFFER_LEN * 2];
         int nameLines = GetWrappedText(arrayClass[i].name, NAME_FONT_SIZE, GetTextMaxWidth(), display, sizeof(display));
-        float dividerY = arrayClass[i].bounds.y + GetNameSectionHeight(nameLines);
+
+        float stereotypeHeight = GetStereotypeHeight(&arrayClass[i]);
+        float dividerY = arrayClass[i].bounds.y + stereotypeHeight + GetNameSectionHeight(nameLines);
 
         DrawRectangleLinesEx(arrayClass[i].bounds, 2, colorClass);
-        DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING, arrayClass[i].bounds.y + NAME_PADDING, NAME_FONT_SIZE, ThemeText());
+
+        const char *stereotype = GetStereotype(&arrayClass[i]);
+        if (stereotype != NULL)
+        {
+            int stereotypeWidth = MeasureUiText(stereotype, STEREOTYPE_FONT);
+            DrawUiText(stereotype,
+                       arrayClass[i].bounds.x + (arrayClass[i].bounds.width - stereotypeWidth) / 2.0f,
+                       arrayClass[i].bounds.y + 6, STEREOTYPE_FONT, ThemeTextMuted());
+        }
+
+        DrawUiText(display, arrayClass[i].bounds.x + NAME_PADDING,
+                   arrayClass[i].bounds.y + stereotypeHeight + NAME_PADDING, NAME_FONT_SIZE, ThemeText());
         DrawLine(arrayClass[i].bounds.x, dividerY, arrayClass[i].bounds.x + arrayClass[i].bounds.width, dividerY, colorClass);
 
         float rowY = dividerY + PARAMS_PADDING;
@@ -926,6 +992,24 @@ static void DrawClassTab(Rectangle area, UMLClass *cls, int *cursor)
     }
     y += 26;
 
+    PanelLabel("Tipo", area.x, y);
+    y += 18;
+
+    float kindWidth = (area.width - PANEL_GAP) / 2.0f;
+    for (int i = 0; i < CLASS_KIND_COUNT; i++)
+    {
+        Rectangle rect = {area.x + (i % 2) * (kindWidth + PANEL_GAP),
+                          y + (i / 2) * (PANEL_ROW_HEIGHT + PANEL_GAP),
+                          kindWidth, PANEL_ROW_HEIGHT};
+
+        if (PanelButton(rect, classKindLabels[i], cls->kind == (ClassKind)i, ThemeAccent(), 12, cursor))
+        {
+            PushHistory();
+            cls->kind = (ClassKind)i;
+        }
+    }
+    y += 2 * (PANEL_ROW_HEIGHT + PANEL_GAP) + 12;
+
     char summary[96];
     snprintf(summary, sizeof(summary), "%d atributo(s) e %d metodo(s)", cls->paramCount, cls->methodCount);
     DrawUiText(summary, area.x, y, 12, ThemeTextMuted());
@@ -935,7 +1019,8 @@ static void DrawParamsTab(Rectangle area, UMLClass *cls, int *cursor)
 {
     float y = area.y;
 
-    y = DrawListHeader(area, y, "ATRIBUTOS", cls->paramCount < MAX_PARAMS, cursor, AddParam, selectedIndex);
+    y = DrawListHeader(area, y, (cls->kind == CLASS_KIND_ENUM) ? "VALORES" : "ATRIBUTOS",
+                       cls->paramCount < MAX_PARAMS, cursor, AddParam, selectedIndex);
 
     for (int i = 0; i < cls->paramCount; i++)
     {

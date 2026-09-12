@@ -237,6 +237,17 @@ static const char *ValidateRelation(int ignoreIndex, int fromId, int toId, Relat
         if (InheritsFrom(toId, fromId, 0)) return "Isso criaria heranca circular";
     }
 
+    // Realizacao e "implementa interface": o destino precisa ser uma
+    if (type == RELATION_REALIZATION)
+    {
+        int toIndex = FindClassIndexById(toId);
+
+        if (toIndex != -1 && GetClassKind(toIndex) != CLASS_KIND_INTERFACE)
+        {
+            return "Realizacao exige uma interface no destino";
+        }
+    }
+
     return NULL;
 }
 

@@ -19,6 +19,21 @@ static const int fontSizes[UI_FONT_VARIANTS] = {12, 14, 16};
 static Font fonts[UI_FONT_VARIANTS] = {0};
 static bool customFontLoaded = false;
 
+// ASCII imprimivel mais as aspas angulares do estereotipo UML («interface»),
+// que ficam fora da faixa ASCII e sairiam como caixinha sem isto.
+#define ASCII_COUNT      95
+#define UI_CODEPOINTS (ASCII_COUNT + 2)
+
+static int codepoints[UI_CODEPOINTS];
+
+static void BuildCodepoints(void)
+{
+    for (int i = 0; i < ASCII_COUNT; i++) codepoints[i] = 32 + i;
+
+    codepoints[ASCII_COUNT] = 0x00AB;     // <<
+    codepoints[ASCII_COUNT + 1] = 0x00BB; // >>
+}
+
 static const char *FindFontPath(void)
 {
     int candidateCount = sizeof(fontCandidates) / sizeof(fontCandidates[0]);
@@ -34,12 +49,13 @@ static const char *FindFontPath(void)
 void LoadUiFont(void)
 {
     const char *path = FindFontPath();
+    BuildCodepoints();
 
     if (path != NULL)
     {
         for (int i = 0; i < UI_FONT_VARIANTS; i++)
         {
-            fonts[i] = LoadFontEx(path, fontSizes[i], NULL, 0);
+            fonts[i] = LoadFontEx(path, fontSizes[i], codepoints, UI_CODEPOINTS);
 
             if (fonts[i].texture.id == 0)
             {
