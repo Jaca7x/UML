@@ -442,6 +442,18 @@ void DrawUi(int *cursor) {
 
         Rectangle packageBox = {field.x + field.width + 16, field.y, 230, field.height};
 
+        // Clique fora dos dois campos devolve o teclado. Sem isto o campo
+        // continua focado para sempre e o painel lateral nunca consegue
+        // segurar o foco, porque o editor descarta o dele enquanto um campo
+        // da barra estiver ativo.
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)
+            && !CheckCollisionPointRec(GetMousePosition(), field)
+            && !CheckCollisionPointRec(GetMousePosition(), packageBox))
+        {
+            fileNameFocused = false;
+            packageFocused = false;
+        }
+
         if (fileNameFocused) AppendTypedChars(fileNameField, DIAGRAM_PATH_LEN);
         else if (packageFocused) AppendTypedChars(packageField, PACKAGE_LEN);
 
@@ -464,6 +476,11 @@ void DrawUi(int *cursor) {
             packageFocused = true;
             fileNameFocused = false;
         }
+    }
+    else
+    {
+        fileNameFocused = false;
+        packageFocused = false;
     }
 
     if (GetTime() < statusUntil)
