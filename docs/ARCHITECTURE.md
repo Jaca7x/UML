@@ -30,6 +30,7 @@ UML/
 │   │   ├── storage.h         # Salvar e carregar o diagrama em arquivo
 │   │   ├── renderer.h        # Desenho do mundo (grid)
 │   │   ├── codegen.h         # Geração de código Java a partir do diagrama
+│   │   ├── codeparse.h       # Leitura de código Java de volta para o diagrama
 │   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
 │   │   ├── uifont.h          # Carregamento e desenho de texto
 │   │   └── widgets.h         # Botões e campos do painel de propriedades
@@ -197,6 +198,52 @@ comportamento anterior: arquivos soltos em `codigo/`, sem declaração.
 escrito à mão dentro de `codigo/` se perde — a pasta é saída descartável
 (está no `.gitignore`), não lugar de trabalho.
 
+### `codeparse` (`codeparse.h` / `codeparse.c`)
+
+O caminho de volta do `codegen`: lê os `.java` de uma pasta e remonta o
+diagrama. É o que fecha o ciclo — gerar, mexer no código, reabrir.
+
+**Não é um parser de Java**, e não tenta ser. É um leitor de linha tolerante,
+que reconhece o que o gerador escreve e a forma comum de escrever o resto à
+mão. Ficam de fora: declaração quebrada em várias linhas, classe aninhada e
+genérico com espaço dentro (`Map<String, Integer>`). Um parser de verdade
+custaria muito mais do que entrega para o tamanho deste editor.
+
+**O problema de fundo: Java não guarda coordenada.** E não só isso — agregação
+e composição geram exatamente o mesmo código, a multiplicidade some, e
+dependência não vira linha nenhuma. Se os arquivos forem o formato de
+gravação, cada abertura perderia parte do diagrama.
+
+A saída é o gerador deixar o que falta em marcador de comentário, que o leitor
+reconhece na volta. O arquivo continua Java válido:
+
+```java
+// @ruml pos <x> <y> <larguraUsuario> <alturaUsuario>
+    private List<Cachorro> cachorros; // @ruml rel agregacao Cachorro "1" "0..*"
+    // @ruml rel dependencia Pagamento "" ""
+```
+
+Com os marcadores o ciclo ida-e-volta é **idêntico** (verificado contra o
+`exemplo.ruml`, comparando por nome em vez de id, já que a importação
+renumera).
+
+**Java escrito à mão não tem marcador**, e aí entra o palpite: `extends` vira
+herança, `implements` vira realização, campo de tipo conhecido vira associação,
+`List<Conhecido>` vira agregação `*`, e a posição cai numa grade automática.
+
+**Duas passadas** sobre os arquivos: relacionamento cita classe por nome, então
+todas precisam existir antes de qualquer corpo ser lido.
+
+**Método com `@Override` é ignorado.** Ele cumpre contrato herdado, não é membro
+próprio da classe — e é justamente o que o `AppendInterfaceStubs` acrescentou
+por conta própria na geração. Sem esta regra, cada ida e volta inflaria a
+classe com os métodos da interface. Construtor também é ignorado: o modelo do
+diagrama não tem onde guardar um.
+
+**Pasta sem `.java` não apaga nada.** A contagem vem antes do
+`ClearAllClasses()` — descartar o diagrama e só depois descobrir que não havia
+o que ler destruiria o trabalho do usuário por causa de uma pasta vazia.
+
 ## Fluxo de execução (`main.c`)
 
 1. Declara suporte a DPI (`FLAG_WINDOW_HIGHDPI`), cria a janela, carrega a
@@ -230,6 +277,7 @@ cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 - [x] Seleção múltipla e alinhamento na grade
 - [x] Tipos de classe (abstrata, interface, enum)
 - [x] Geração de código Java, com pacote opcional
+- [x] Importação de código Java de volta para o diagrama
 - [ ] Exportar o diagrama como imagem
 - [ ] Exportar para PlantUML
 - [ ] Validação do modelo (interface com atributo, nome duplicado, etc.)
