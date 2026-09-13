@@ -29,6 +29,7 @@ UML/
 │   │   ├── history.h         # Desfazer (Ctrl+Z)
 │   │   ├── storage.h         # Salvar e carregar o diagrama em arquivo
 │   │   ├── renderer.h        # Desenho do mundo (grid)
+│   │   ├── codegen.h         # Geração de código Java a partir do diagrama
 │   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
 │   │   ├── uifont.h          # Carregamento e desenho de texto
 │   │   └── widgets.h         # Botões e campos do painel de propriedades
@@ -160,6 +161,42 @@ daquele campo em vez de uma letra por vez.
 
 Desenho de mundo que não é estado do diagrama — hoje, o grid de fundo.
 
+### `codegen` (`codegen.h` / `codegen.c`)
+
+Escreve um `.java` por classe do diagrama dentro da pasta `codigo/`. O objetivo
+não é gerar o sistema pronto, e sim o **esqueleto** — as assinaturas que o
+diagrama já descreve — para o trabalho começar de um projeto compilável em vez
+de um arquivo em branco.
+
+**O tipo da classe vira a palavra-chave:** `class`, `abstract class`,
+`interface` ou `enum`. Atributos viram campos, métodos viram assinaturas com
+corpo `// TODO implementar`, e a visibilidade UML (`+ - # ~`) vira o modificador
+Java (`~` é *package-private*, então não escreve modificador nenhum).
+
+**Tipos são traduzidos, não copiados** (`MapType`): o que se escreve em UML
+nem sempre existe em Java — `bool` vira `boolean`, `int` continua `int`. Sem
+essa camada o arquivo gerado não compilaria.
+
+**Relacionamentos viram campos.** Agregação e composição com multiplicidade
+`*` (ou `0..*`, `1..*`) geram `List<Tipo>` e puxam o `import java.util.List`;
+com multiplicidade simples geram um campo do próprio tipo. Herança vira
+`extends`, realização vira `implements`.
+
+**Stubs de interface** (`AppendInterfaceStubs`): quem implementa uma interface
+precisa dos métodos dela, senão o arquivo gerado não compila. Os que faltam são
+emitidos com `@Override` e o mesmo corpo `// TODO`.
+
+**Pacote (opcional).** O campo "pacote java" da aba *Arquivo* faz duas coisas:
+escreve a declaração `package` no topo de cada arquivo e espelha o nome na
+árvore de pastas — `com.empresa.app` gera `codigo/com/empresa/app/*.java`.
+Java exige que a pasta corresponda ao pacote, então gerar tudo plano obrigaria
+a mover os arquivos à mão antes de importar num projeto. Campo vazio mantém o
+comportamento anterior: arquivos soltos em `codigo/`, sem declaração.
+
+**Limitação conhecida:** gerar de novo **sobrescreve** os arquivos. Código
+escrito à mão dentro de `codigo/` se perde — a pasta é saída descartável
+(está no `.gitignore`), não lugar de trabalho.
+
 ## Fluxo de execução (`main.c`)
 
 1. Declara suporte a DPI (`FLAG_WINDOW_HIGHDPI`), cria a janela, carrega a
@@ -189,11 +226,14 @@ cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 - [x] Painel de propriedades com edição ao vivo
 - [x] Salvar e carregar o diagrama
 - [x] Desfazer (Ctrl+Z)
+- [x] Métodos da classe (terceiro compartimento)
+- [x] Seleção múltipla e alinhamento na grade
+- [x] Tipos de classe (abstrata, interface, enum)
+- [x] Geração de código Java, com pacote opcional
 - [ ] Exportar o diagrama como imagem
 - [ ] Exportar para PlantUML
-- [ ] Métodos da classe (terceiro compartimento; o campo `methods` já existe
-      na struct mas não é usado)
+- [ ] Validação do modelo (interface com atributo, nome duplicado, etc.)
 - [ ] Refazer (Ctrl+Y)
-- [ ] Seleção múltipla e alinhamento na grade
+- [ ] Testes automatizados e CI
 
 Consulte também [BUILD.md](BUILD.md) e [CONVENTIONS.md](CONVENTIONS.md).

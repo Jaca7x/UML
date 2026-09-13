@@ -36,6 +36,10 @@ static int windowedHeight = 0;
 static char fileNameField[DIAGRAM_PATH_LEN] = DEFAULT_DIAGRAM_PATH;
 static bool fileNameFocused = false;
 
+// Pacote Java do codigo gerado. Vazio mantem o default package.
+static char packageField[PACKAGE_LEN] = {0};
+static bool packageFocused = false;
+
 // Carregar por cima de alteracoes pendentes precisa de confirmacao; fechar a
 // janela nao da, porque a raylib nao permite cancelar o fechamento.
 static bool confirmingLoad = false;
@@ -57,7 +61,7 @@ static void SetStatus(const char *message, Color color)
 
 bool IsFileFieldFocused(void)
 {
-    return fileNameFocused;
+    return fileNameFocused || packageFocused;
 }
 
 void ShowUiStatus(const char *message, bool success)
@@ -79,11 +83,12 @@ static void SaveToField(void)
 static void GenerateCode(void)
 {
     int files = 0;
+    char folder[256] = {0};
 
-    if (GenerateJavaCode(&files))
+    if (GenerateJavaCode(packageField, &files, folder, sizeof(folder)))
     {
         char message[STATUS_LEN];
-        snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, CODEGEN_FOLDER);
+        snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, folder);
         SetStatus(message, ThemeSuccess());
     }
     else
@@ -435,17 +440,36 @@ void DrawUi(int *cursor) {
     {
         Rectangle field = {GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 16, TAB_HEIGHT + 12, 220, 26};
 
+        Rectangle packageBox = {field.x + field.width + 16, field.y, 230, field.height};
+
         if (fileNameFocused) AppendTypedChars(fileNameField, DIAGRAM_PATH_LEN);
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) fileNameFocused = false;
+        else if (packageFocused) AppendTypedChars(packageField, PACKAGE_LEN);
+
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE))
+        {
+            fileNameFocused = false;
+            packageFocused = false;
+        }
 
         DrawUiText("arquivo", field.x, field.y - 14, 11, ThemeTextMuted());
-        if (PanelField(field, fileNameField, fileNameFocused, cursor)) fileNameFocused = true;
+        if (PanelField(field, fileNameField, fileNameFocused, cursor))
+        {
+            fileNameFocused = true;
+            packageFocused = false;
+        }
+
+        DrawUiText("pacote java (opcional)", packageBox.x, packageBox.y - 14, 11, ThemeTextMuted());
+        if (PanelField(packageBox, packageField, packageFocused, cursor))
+        {
+            packageFocused = true;
+            fileNameFocused = false;
+        }
     }
 
     if (GetTime() < statusUntil)
     {
         float statusX = GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 20;
-        if (activeTab == 0) statusX += 240;
+        if (activeTab == 0) statusX += 490;
 
         DrawUiText(statusMessage, statusX, TAB_HEIGHT + 18, 14, statusColor);
     }

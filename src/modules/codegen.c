@@ -282,7 +282,24 @@ static bool NeedsListImport(const UMLClass *cls)
     return false;
 }
 
-static bool GenerateClassFile(const UMLClass *cls)
+// com.empresa.app -> codigo/com/empresa/app
+static void BuildPackageFolder(const char *package, char *out, int outSize)
+{
+    int used = snprintf(out, outSize, "%s", CODEGEN_FOLDER);
+
+    if (package[0] == '\0') return;
+
+    if (used < outSize - 1) out[used++] = '/';
+
+    for (int i = 0; package[i] != '\0' && used < outSize - 1; i++)
+    {
+        out[used++] = (package[i] == '.') ? '/' : package[i];
+    }
+
+    out[used] = '\0';
+}
+
+static bool GenerateClassFile(const UMLClass *cls, const char *package, const char *folder)
 {
     if (cls->name[0] == '\0') return false;
 
@@ -292,6 +309,14 @@ static bool GenerateClassFile(const UMLClass *cls)
     source[0] = '\0';
 
     AppendLine(source, SOURCE_CAPACITY, "// Gerado pelo RayUML Editor a partir do diagrama.");
+
+    // A declaracao de pacote precisa vir antes de qualquer import
+    if (package[0] != '\0')
+    {
+        char line[LINE_CAPACITY];
+        snprintf(line, sizeof(line), "\npackage %s;", package);
+        AppendLine(source, SOURCE_CAPACITY, line);
+    }
 
     if (NeedsListImport(cls))
     {
@@ -316,8 +341,8 @@ static bool GenerateClassFile(const UMLClass *cls)
 
     AppendLine(source, SOURCE_CAPACITY, "}");
 
-    char path[256];
-    snprintf(path, sizeof(path), "%s/%s.java", CODEGEN_FOLDER, cls->name);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.java", folder, cls->name);
 
     bool saved = SaveFileText(path, source);
     free(source);
@@ -325,16 +350,29 @@ static bool GenerateClassFile(const UMLClass *cls)
     return saved;
 }
 
-bool GenerateJavaCode(int *outFileCount)
+bool GenerateJavaCode(const char *package, int *outFileCount, char *outFolder, int outFolderSize)
 {
     *outFileCount = 0;
 
     if (GetClassCount() == 0) return false;
-    if (!DirectoryExists(CODEGEN_FOLDER)) MakeDirectory(CODEGEN_FOLDER);
+
+    char cleaned[PACKAGE_LEN] = {0};
+    int length = 0;
+
+    // Espaco nao existe em nome de pacote e viraria pasta invalida
+    for (int i = 0; package[i] != '\0' && length < PACKAGE_LEN - 1; i++)
+    {
+        if (package[i] != ' ') cleaned[length++] = package[i];
+    }
+    cleaned[length] = '\0';
+
+    BuildPackageFolder(cleaned, outFolder, outFolderSize);
+
+    if (!DirectoryExists(outFolder)) MakeDirectory(outFolder);
 
     for (int i = 0; i < GetClassCount(); i++)
     {
-        if (GenerateClassFile(GetClass(i))) (*outFileCount)++;
+        if (GenerateClassFile(GetClass(i), cleaned, outFolder)) (*outFileCount)++;
     }
 
     return (*outFileCount) > 0;
