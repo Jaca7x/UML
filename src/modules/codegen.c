@@ -18,12 +18,16 @@ static const char *MapType(const char *type)
     return type;
 }
 
+// Devolve com o espaco junto porque o ~ do UML e o package-private do Java,
+// que se escreve sem modificador nenhum — e nao como "private", que restringe
+// de verdade o acesso.
 static const char *MapVisibility(char visibility)
 {
-    if (visibility == '+') return "public";
-    if (visibility == '#') return "protected";
+    if (visibility == '+') return "public ";
+    if (visibility == '#') return "protected ";
+    if (visibility == '~') return "";
 
-    return "private";
+    return "private ";
 }
 
 // Corpo minimo que compila: Java exige retorno em metodo nao-void.
@@ -191,7 +195,7 @@ static void AppendFields(char *source, int capacity, const UMLClass *cls)
         }
         else
         {
-            snprintf(line, sizeof(line), "    %s %s %s;",
+            snprintf(line, sizeof(line), "    %s%s %s;",
                      MapVisibility(cls->params[i].visibility),
                      MapType(cls->params[i].type), cls->params[i].name);
         }
@@ -218,7 +222,7 @@ static void AppendMethods(char *source, int capacity, const UMLClass *cls)
 
         AppendLine(source, capacity, "");
 
-        snprintf(line, sizeof(line), "    %s %s %s(%s) {",
+        snprintf(line, sizeof(line), "    %s%s %s(%s) {",
                  MapVisibility(method->visibility), returnType, method->name, method->args);
         AppendLine(source, capacity, line);
         AppendLine(source, capacity, "        // TODO implementar");
