@@ -125,14 +125,41 @@ static void AppendRelationFields(char *source, int capacity, const UMLClass *cls
         snprintf(fieldName, sizeof(fieldName), "%s", targetName);
         if (fieldName[0] >= 'A' && fieldName[0] <= 'Z') fieldName[0] += 32;
 
+        // O marcador carrega o que o campo Java sozinho nao diz: agregacao e
+        // composicao viram exatamente o mesmo codigo, e a multiplicidade some.
+        char mark[LINE_CAPACITY];
+        snprintf(mark, sizeof(mark), " // @ruml rel %s %s \"%s\" \"%s\"",
+                 GetRelationTypeKey(relation->type), targetName,
+                 relation->fromMultiplicity, relation->toMultiplicity);
+
         if (IsManyMultiplicity(relation->toMultiplicity))
         {
-            snprintf(line, sizeof(line), "    private List<%s> %ss;", targetName, fieldName);
+            snprintf(line, sizeof(line), "    private List<%s> %ss;%s", targetName, fieldName, mark);
         }
         else
         {
-            snprintf(line, sizeof(line), "    private %s %s;", targetName, fieldName);
+            snprintf(line, sizeof(line), "    private %s %s;%s", targetName, fieldName, mark);
         }
+
+        AppendLine(source, capacity, line);
+    }
+}
+
+// Dependencia e uso passageiro, entao nao vira campo — e sem campo nao sobra
+// nada no arquivo que a releitura possa reconhecer. So o marcador a segura.
+static void AppendDependencyMarkers(char *source, int capacity, const UMLClass *cls)
+{
+    for (int i = 0; i < GetRelationCount(); i++)
+    {
+        const UMLRelation *relation = GetRelation(i);
+        if (relation->type != RELATION_DEPENDENCY || relation->fromId != cls->id) continue;
+
+        int targetIndex = FindClassIndexById(relation->toId);
+        if (targetIndex == -1) continue;
+
+        char line[LINE_CAPACITY];
+        snprintf(line, sizeof(line), "    // @ruml rel dependencia %s \"%s\" \"%s\"",
+                 GetClass(targetIndex)->name, relation->fromMultiplicity, relation->toMultiplicity);
 
         AppendLine(source, capacity, line);
     }
@@ -282,7 +309,37 @@ static bool NeedsListImport(const UMLClass *cls)
     return false;
 }
 
-static bool GenerateClassFile(const UMLClass *cls)
+// Espaco nao existe em nome de pacote e viraria pasta invalida
+void CleanPackageName(const char *package, char *out, int outSize)
+{
+    int length = 0;
+
+    for (int i = 0; package[i] != '\0' && length < outSize - 1; i++)
+    {
+        if (package[i] != ' ') out[length++] = package[i];
+    }
+
+    out[length] = '\0';
+}
+
+// com.empresa.app -> codigo/com/empresa/app
+void BuildPackageFolder(const char *package, char *out, int outSize)
+{
+    int used = snprintf(out, outSize, "%s", CODEGEN_FOLDER);
+
+    if (package[0] == '\0') return;
+
+    if (used < outSize - 1) out[used++] = '/';
+
+    for (int i = 0; package[i] != '\0' && used < outSize - 1; i++)
+    {
+        out[used++] = (package[i] == '.') ? '/' : package[i];
+    }
+
+    out[used] = '\0';
+}
+
+static bool GenerateClassFile(const UMLClass *cls, const char *package, const char *folder)
 {
     if (cls->name[0] == '\0') return false;
 
@@ -292,6 +349,21 @@ static bool GenerateClassFile(const UMLClass *cls)
     source[0] = '\0';
 
     AppendLine(source, SOURCE_CAPACITY, "// Gerado pelo RayUML Editor a partir do diagrama.");
+
+    // Java nao guarda onde a caixa estava. Sem esta linha, reabrir o diagrama
+    // pelos arquivos rearranjaria tudo em grade a cada vez.
+    char marker[LINE_CAPACITY];
+    snprintf(marker, sizeof(marker), "// @ruml pos %.2f %.2f %.2f %.2f",
+             cls->bounds.x, cls->bounds.y, cls->userWidth, cls->userHeight);
+    AppendLine(source, SOURCE_CAPACITY, marker);
+
+    // A declaracao de pacote precisa vir antes de qualquer import
+    if (package[0] != '\0')
+    {
+        char line[LINE_CAPACITY];
+        snprintf(line, sizeof(line), "\npackage %s;", package);
+        AppendLine(source, SOURCE_CAPACITY, line);
+    }
 
     if (NeedsListImport(cls))
     {
@@ -310,14 +382,15 @@ static bool GenerateClassFile(const UMLClass *cls)
     {
         AppendFields(source, SOURCE_CAPACITY, cls);
         AppendRelationFields(source, SOURCE_CAPACITY, cls);
+        AppendDependencyMarkers(source, SOURCE_CAPACITY, cls);
         AppendMethods(source, SOURCE_CAPACITY, cls);
         AppendInterfaceStubs(source, SOURCE_CAPACITY, cls);
     }
 
     AppendLine(source, SOURCE_CAPACITY, "}");
 
-    char path[256];
-    snprintf(path, sizeof(path), "%s/%s.java", CODEGEN_FOLDER, cls->name);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.java", folder, cls->name);
 
     bool saved = SaveFileText(path, source);
     free(source);
@@ -325,16 +398,22 @@ static bool GenerateClassFile(const UMLClass *cls)
     return saved;
 }
 
-bool GenerateJavaCode(int *outFileCount)
+bool GenerateJavaCode(const char *package, int *outFileCount, char *outFolder, int outFolderSize)
 {
     *outFileCount = 0;
 
     if (GetClassCount() == 0) return false;
-    if (!DirectoryExists(CODEGEN_FOLDER)) MakeDirectory(CODEGEN_FOLDER);
+
+    char cleaned[PACKAGE_LEN] = {0};
+    CleanPackageName(package, cleaned, sizeof(cleaned));
+
+    BuildPackageFolder(cleaned, outFolder, outFolderSize);
+
+    if (!DirectoryExists(outFolder)) MakeDirectory(outFolder);
 
     for (int i = 0; i < GetClassCount(); i++)
     {
-        if (GenerateClassFile(GetClass(i))) (*outFileCount)++;
+        if (GenerateClassFile(GetClass(i), cleaned, outFolder)) (*outFileCount)++;
     }
 
     return (*outFileCount) > 0;

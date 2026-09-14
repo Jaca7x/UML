@@ -5,6 +5,8 @@
 #include "theme.h"
 #include "storage.h"
 #include "codegen.h"
+#include "codeparse.h"
+#include "history.h"
 #include "widgets.h"
 #include <stdio.h>
 #include <string.h>
@@ -36,9 +38,17 @@ static int windowedHeight = 0;
 static char fileNameField[DIAGRAM_PATH_LEN] = DEFAULT_DIAGRAM_PATH;
 static bool fileNameFocused = false;
 
+// Pacote Java do codigo gerado. Vazio mantem o default package.
+static char packageField[PACKAGE_LEN] = {0};
+static bool packageFocused = false;
+
 // Carregar por cima de alteracoes pendentes precisa de confirmacao; fechar a
 // janela nao da, porque a raylib nao permite cancelar o fechamento.
-static bool confirmingLoad = false;
+static bool confirmingReplace = false;
+
+// Abrir um .ruml e importar os .java trocam o diagrama inteiro, entao passam
+// pelo mesmo aviso: o que muda e so o que roda depois do "pode ir".
+static void (*pendingAction)(void) = NULL;
 
 // Lista de arquivos do diretorio: evita ter que lembrar o nome para abrir
 static bool browsingFiles = false;
@@ -57,7 +67,7 @@ static void SetStatus(const char *message, Color color)
 
 bool IsFileFieldFocused(void)
 {
-    return fileNameFocused;
+    return fileNameFocused || packageFocused;
 }
 
 void ShowUiStatus(const char *message, bool success)
@@ -79,11 +89,12 @@ static void SaveToField(void)
 static void GenerateCode(void)
 {
     int files = 0;
+    char folder[256] = {0};
 
-    if (GenerateJavaCode(&files))
+    if (GenerateJavaCode(packageField, &files, folder, sizeof(folder)))
     {
         char message[STATUS_LEN];
-        snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, CODEGEN_FOLDER);
+        snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, folder);
         SetStatus(message, ThemeSuccess());
     }
     else
@@ -109,13 +120,46 @@ static void RequestLoad(void)
     browsingFiles = true;
 }
 
+static void ImportJavaIntoDiagram(void)
+{
+    int classes = 0;
+    char folder[256] = {0};
+    char message[STATUS_LEN];
+
+    // Antes de trocar tudo: sem isto o Ctrl+Z nao teria como voltar
+    PushHistory();
+
+    if (ImportJavaCode(packageField, &classes, folder, sizeof(folder)))
+    {
+        snprintf(message, sizeof(message), "%d classe(s) lidas de %s/", classes, folder);
+        SetStatus(message, ThemeSuccess());
+    }
+    else
+    {
+        snprintf(message, sizeof(message), "Nenhum .java em %s/", folder);
+        SetStatus(message, ThemeDanger());
+    }
+}
+
+static void RequestReplace(void (*action)(void))
+{
+    pendingAction = action;
+
+    if (IsDiagramDirty()) confirmingReplace = true;
+    else action();
+}
+
+static void ImportCode(void)
+{
+    RequestReplace(ImportJavaIntoDiagram);
+}
+
 static void ChooseFile(const char *path)
 {
     snprintf(pendingLoadPath, sizeof(pendingLoadPath), "%s", path);
     browsingFiles = false;
 
-    if (IsDiagramDirty()) confirmingLoad = true;
-    else LoadPendingFile();
+    RequestReplace(LoadPendingFile);
 }
 
 void ToggleFullscreenMode(void)
@@ -163,7 +207,7 @@ bool IsMouseOverUi(void)
 
     // Com o dialogo aberto a interface e dona de todo o input, nao so das
     // suas regioes
-    if (confirmingLoad || browsingFiles) return true;
+    if (confirmingReplace || browsingFiles) return true;
 
     return CheckCollisionPointRec(mouse, GetMenuBarBounds()) || CheckCollisionPointRec(mouse, GetPanelBounds());
 }
@@ -181,7 +225,8 @@ typedef enum
     ICON_FULLSCREEN,
     ICON_THEME,
     ICON_GRID,
-    ICON_CODE
+    ICON_CODE,
+    ICON_IMPORT
 }IconKind;
 
 static void IconClass(Rectangle a, Color tint)
@@ -282,6 +327,30 @@ static void IconCode(Rectangle a, Color tint)
     }
 }
 
+// Codigo virando diagrama: a seta entra na caixa de classe
+static void IconImport(Rectangle a, Color tint)
+{
+    Rectangle box = {a.x, a.y + a.height * 0.18f, a.width * 0.44f, a.height * 0.64f};
+
+    DrawRectangleLinesEx(box, ICON_THICKNESS, tint);
+    DrawLineEx((Vector2){box.x, box.y + box.height * 0.38f},
+               (Vector2){box.x + box.width, box.y + box.height * 0.38f}, ICON_THICKNESS, tint);
+
+    float mid = a.y + a.height / 2.0f;
+    float tipX = a.x + a.width * 0.58f;
+    float head = a.width * 0.16f;
+
+    DrawLineEx((Vector2){a.x + a.width, mid}, (Vector2){tipX, mid}, ICON_THICKNESS, tint);
+
+    Vector2 tip = {tipX, mid};
+    Vector2 top = {tipX + head, mid - head};
+    Vector2 bottom = {tipX + head, mid + head};
+
+    // Nas duas ordens: a raylib descarta o triangulo de sentido contrario
+    DrawTriangle(tip, bottom, top, tint);
+    DrawTriangle(tip, top, bottom, tint);
+}
+
 static void DrawIcon(IconKind kind, Rectangle area, Color tint)
 {
     switch (kind)
@@ -293,6 +362,7 @@ static void DrawIcon(IconKind kind, Rectangle area, Color tint)
         case ICON_FULLSCREEN: IconFullscreen(area, tint); break;
         case ICON_THEME:      IconTheme(area, tint); break;
         case ICON_CODE:       IconCode(area, tint); break;
+        case ICON_IMPORT:     IconImport(area, tint); break;
         default:              IconGrid(area, tint); break;
     }
 }
@@ -316,7 +386,8 @@ typedef struct
 static const ToolbarButton fileButtons[] = {
     {ICON_SAVE, "salvar", NULL, SaveToField},
     {ICON_LOAD, "abrir",  NULL, RequestLoad},
-    {ICON_CODE, "gerar",  NULL, GenerateCode}
+    {ICON_CODE,   "gerar",    NULL, GenerateCode},
+    {ICON_IMPORT, "importar", NULL, ImportCode}
 };
 
 static const ToolbarButton insertButtons[] = {
@@ -331,12 +402,28 @@ static const ToolbarButton viewButtons[] = {
 };
 
 static const ToolbarTab tabs[] = {
-    {"Arquivo", fileButtons,   3},
+    {"Arquivo", fileButtons,   4},
     {"Inserir", insertButtons, 2},
     {"Exibir",  viewButtons,   3}
 };
 
 #define TAB_COUNT 3
+
+// Os campos da aba Arquivo vem depois do ultimo botao, e o status depois
+// deles. Derivar os tres do mesmo ponto evita que acrescentar um botao
+// desalinhe uma das partes.
+static Rectangle GetFileFieldBounds(void)
+{
+    return (Rectangle){GetButtonBounds(tabs[0].count - 1).x + BUTTON_WIDTH + 16,
+                       TAB_HEIGHT + 12, 220, 26};
+}
+
+static Rectangle GetPackageFieldBounds(void)
+{
+    Rectangle field = GetFileFieldBounds();
+
+    return (Rectangle){field.x + field.width + 16, field.y, 230, field.height};
+}
 
 // Inserir e a aba de trabalho: e de onde nascem classes e relacionamentos
 static int activeTab = 1;
@@ -433,19 +520,55 @@ void DrawUi(int *cursor) {
     // O campo de arquivo pertence a aba Arquivo: e o "salvar como"
     if (activeTab == 0)
     {
-        Rectangle field = {GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 16, TAB_HEIGHT + 12, 220, 26};
+        Rectangle field = GetFileFieldBounds();
+        Rectangle packageBox = GetPackageFieldBounds();
+
+        // Clique fora dos dois campos devolve o teclado. Sem isto o campo
+        // continua focado para sempre e o painel lateral nunca consegue
+        // segurar o foco, porque o editor descarta o dele enquanto um campo
+        // da barra estiver ativo.
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)
+            && !CheckCollisionPointRec(GetMousePosition(), field)
+            && !CheckCollisionPointRec(GetMousePosition(), packageBox))
+        {
+            fileNameFocused = false;
+            packageFocused = false;
+        }
 
         if (fileNameFocused) AppendTypedChars(fileNameField, DIAGRAM_PATH_LEN);
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) fileNameFocused = false;
+        else if (packageFocused) AppendTypedChars(packageField, PACKAGE_LEN);
+
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE))
+        {
+            fileNameFocused = false;
+            packageFocused = false;
+        }
 
         DrawUiText("arquivo", field.x, field.y - 14, 11, ThemeTextMuted());
-        if (PanelField(field, fileNameField, fileNameFocused, cursor)) fileNameFocused = true;
+        if (PanelField(field, fileNameField, fileNameFocused, cursor))
+        {
+            fileNameFocused = true;
+            packageFocused = false;
+        }
+
+        DrawUiText("pacote java (opcional)", packageBox.x, packageBox.y - 14, 11, ThemeTextMuted());
+        if (PanelField(packageBox, packageField, packageFocused, cursor))
+        {
+            packageFocused = true;
+            fileNameFocused = false;
+        }
+    }
+    else
+    {
+        fileNameFocused = false;
+        packageFocused = false;
     }
 
     if (GetTime() < statusUntil)
     {
-        float statusX = GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 20;
-        if (activeTab == 0) statusX += 240;
+        Rectangle packageBox = GetPackageFieldBounds();
+        float statusX = (activeTab == 0) ? packageBox.x + packageBox.width + 20
+                                         : GetButtonBounds(tab->count - 1).x + BUTTON_WIDTH + 20;
 
         DrawUiText(statusMessage, statusX, TAB_HEIGHT + 18, 14, statusColor);
     }
@@ -548,7 +671,7 @@ void DrawUi(int *cursor) {
         return;
     }
 
-    if (confirmingLoad)
+    if (confirmingReplace)
     {
         DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
 
@@ -568,21 +691,21 @@ void DrawUi(int *cursor) {
                         false, ThemeAccent(), 13, cursor))
         {
             SaveToField();
-            LoadPendingFile();
-            confirmingLoad = false;
+            if (pendingAction != NULL) pendingAction();
+            confirmingReplace = false;
         }
 
         if (PanelButton((Rectangle){box.x + 30 + buttonWidth, buttonY, buttonWidth, 30}, "Descartar",
                         false, ThemeDanger(), 13, cursor))
         {
-            LoadPendingFile();
-            confirmingLoad = false;
+            if (pendingAction != NULL) pendingAction();
+            confirmingReplace = false;
         }
 
         if (PanelButton((Rectangle){box.x + 40 + buttonWidth * 2, buttonY, buttonWidth, 30}, "Cancelar",
                         false, ThemeBorder(), 13, cursor))
         {
-            confirmingLoad = false;
+            confirmingReplace = false;
         }
 
         return;

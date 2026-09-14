@@ -29,6 +29,8 @@ UML/
 │   │   ├── history.h         # Desfazer (Ctrl+Z)
 │   │   ├── storage.h         # Salvar e carregar o diagrama em arquivo
 │   │   ├── renderer.h        # Desenho do mundo (grid)
+│   │   ├── codegen.h         # Geração de código Java a partir do diagrama
+│   │   ├── codeparse.h       # Leitura de código Java de volta para o diagrama
 │   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
 │   │   ├── uifont.h          # Carregamento e desenho de texto
 │   │   └── widgets.h         # Botões e campos do painel de propriedades
@@ -160,6 +162,88 @@ daquele campo em vez de uma letra por vez.
 
 Desenho de mundo que não é estado do diagrama — hoje, o grid de fundo.
 
+### `codegen` (`codegen.h` / `codegen.c`)
+
+Escreve um `.java` por classe do diagrama dentro da pasta `codigo/`. O objetivo
+não é gerar o sistema pronto, e sim o **esqueleto** — as assinaturas que o
+diagrama já descreve — para o trabalho começar de um projeto compilável em vez
+de um arquivo em branco.
+
+**O tipo da classe vira a palavra-chave:** `class`, `abstract class`,
+`interface` ou `enum`. Atributos viram campos, métodos viram assinaturas com
+corpo `// TODO implementar`, e a visibilidade UML (`+ - # ~`) vira o modificador
+Java (`~` é *package-private*, então não escreve modificador nenhum).
+
+**Tipos são traduzidos, não copiados** (`MapType`): o que se escreve em UML
+nem sempre existe em Java — `bool` vira `boolean`, `int` continua `int`. Sem
+essa camada o arquivo gerado não compilaria.
+
+**Relacionamentos viram campos.** Agregação e composição com multiplicidade
+`*` (ou `0..*`, `1..*`) geram `List<Tipo>` e puxam o `import java.util.List`;
+com multiplicidade simples geram um campo do próprio tipo. Herança vira
+`extends`, realização vira `implements`.
+
+**Stubs de interface** (`AppendInterfaceStubs`): quem implementa uma interface
+precisa dos métodos dela, senão o arquivo gerado não compila. Os que faltam são
+emitidos com `@Override` e o mesmo corpo `// TODO`.
+
+**Pacote (opcional).** O campo "pacote java" da aba *Arquivo* faz duas coisas:
+escreve a declaração `package` no topo de cada arquivo e espelha o nome na
+árvore de pastas — `com.empresa.app` gera `codigo/com/empresa/app/*.java`.
+Java exige que a pasta corresponda ao pacote, então gerar tudo plano obrigaria
+a mover os arquivos à mão antes de importar num projeto. Campo vazio mantém o
+comportamento anterior: arquivos soltos em `codigo/`, sem declaração.
+
+**Limitação conhecida:** gerar de novo **sobrescreve** os arquivos. Código
+escrito à mão dentro de `codigo/` se perde — a pasta é saída descartável
+(está no `.gitignore`), não lugar de trabalho.
+
+### `codeparse` (`codeparse.h` / `codeparse.c`)
+
+O caminho de volta do `codegen`: lê os `.java` de uma pasta e remonta o
+diagrama. É o que fecha o ciclo — gerar, mexer no código, reabrir.
+
+**Não é um parser de Java**, e não tenta ser. É um leitor de linha tolerante,
+que reconhece o que o gerador escreve e a forma comum de escrever o resto à
+mão. Ficam de fora: declaração quebrada em várias linhas, classe aninhada e
+genérico com espaço dentro (`Map<String, Integer>`). Um parser de verdade
+custaria muito mais do que entrega para o tamanho deste editor.
+
+**O problema de fundo: Java não guarda coordenada.** E não só isso — agregação
+e composição geram exatamente o mesmo código, a multiplicidade some, e
+dependência não vira linha nenhuma. Se os arquivos forem o formato de
+gravação, cada abertura perderia parte do diagrama.
+
+A saída é o gerador deixar o que falta em marcador de comentário, que o leitor
+reconhece na volta. O arquivo continua Java válido:
+
+```java
+// @ruml pos <x> <y> <larguraUsuario> <alturaUsuario>
+    private List<Cachorro> cachorros; // @ruml rel agregacao Cachorro "1" "0..*"
+    // @ruml rel dependencia Pagamento "" ""
+```
+
+Com os marcadores o ciclo ida-e-volta é **idêntico** (verificado contra o
+`exemplo.ruml`, comparando por nome em vez de id, já que a importação
+renumera).
+
+**Java escrito à mão não tem marcador**, e aí entra o palpite: `extends` vira
+herança, `implements` vira realização, campo de tipo conhecido vira associação,
+`List<Conhecido>` vira agregação `*`, e a posição cai numa grade automática.
+
+**Duas passadas** sobre os arquivos: relacionamento cita classe por nome, então
+todas precisam existir antes de qualquer corpo ser lido.
+
+**Método com `@Override` é ignorado.** Ele cumpre contrato herdado, não é membro
+próprio da classe — e é justamente o que o `AppendInterfaceStubs` acrescentou
+por conta própria na geração. Sem esta regra, cada ida e volta inflaria a
+classe com os métodos da interface. Construtor também é ignorado: o modelo do
+diagrama não tem onde guardar um.
+
+**Pasta sem `.java` não apaga nada.** A contagem vem antes do
+`ClearAllClasses()` — descartar o diagrama e só depois descobrir que não havia
+o que ler destruiria o trabalho do usuário por causa de uma pasta vazia.
+
 ## Fluxo de execução (`main.c`)
 
 1. Declara suporte a DPI (`FLAG_WINDOW_HIGHDPI`), cria a janela, carrega a
@@ -189,11 +273,15 @@ cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 - [x] Painel de propriedades com edição ao vivo
 - [x] Salvar e carregar o diagrama
 - [x] Desfazer (Ctrl+Z)
+- [x] Métodos da classe (terceiro compartimento)
+- [x] Seleção múltipla e alinhamento na grade
+- [x] Tipos de classe (abstrata, interface, enum)
+- [x] Geração de código Java, com pacote opcional
+- [x] Importação de código Java de volta para o diagrama
 - [ ] Exportar o diagrama como imagem
 - [ ] Exportar para PlantUML
-- [ ] Métodos da classe (terceiro compartimento; o campo `methods` já existe
-      na struct mas não é usado)
+- [ ] Validação do modelo (interface com atributo, nome duplicado, etc.)
 - [ ] Refazer (Ctrl+Y)
-- [ ] Seleção múltipla e alinhamento na grade
+- [ ] Testes automatizados e CI
 
 Consulte também [BUILD.md](BUILD.md) e [CONVENTIONS.md](CONVENTIONS.md).
