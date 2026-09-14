@@ -73,6 +73,21 @@ para `ui.ttf`.
 (build de APK). Requer Android SDK, NDK/toolchain standalone e JDK
 configurados nas variáveis do topo do arquivo (`ANDROID_HOME`,
 `ANDROID_TOOLCHAIN`, `JAVA_HOME`, etc.) — ajuste conforme o seu ambiente
+
+## Testes
+
+```
+make test
+```
+
+Compila os módulos junto com `tests/` e roda a suíte **sem abrir janela**.
+Sai com código diferente de zero se algo falhar, que é o que a CI usa.
+
+Os testes escrevem em `build/teste/` e, por um instante, em `codigo/` —
+removendo depois só os arquivos de amostra que criaram. Se você tinha código
+gerado solto em `codigo/`, basta gerar de novo.
+
+Detalhes do que está coberto e por quê: [ARCHITECTURE.md](ARCHITECTURE.md).
 antes de rodar `make -f Makefile.Android`.
 
 ## Live reload durante desenvolvimento (opcional)

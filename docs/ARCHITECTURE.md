@@ -35,6 +35,7 @@ UML/
 │   │   ├── uifont.h          # Carregamento e desenho de texto
 │   │   └── widgets.h         # Botões e campos do painel de propriedades
 │   └── modules/             # Implementação dos módulos (.c), 1:1 com os headers
+├── tests/                  # Testes automatizados (make test), rodam sem janela
 ├── main.c                  # Ponto de entrada: janela, câmera, game loop
 ├── Makefile                # Build incremental para desktop (recomendado, ver BUILD.md)
 ├── build.bat               # Script de build alternativo para Windows (não incremental)
@@ -265,6 +266,39 @@ clique selecionaria também a classe embaixo do cursor.
 cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 `SetMouseCursor` direto, mantendo a decisão final no loop principal.
 
+## Testes
+
+`make test` compila os módulos junto com `tests/` e roda tudo **sem abrir
+janela**. As funções de arquivo da raylib (`LoadFileText`, `DirectoryExists`,
+`LoadDirectoryFiles`) funcionam sem `InitWindow`, e é isso que permite
+verificar salvar/carregar e a geração de código no terminal e na CI.
+
+O arnês é próprio, em `tests/tests.h`: trazer um framework de teste para C
+custaria mais configuração do que o próprio código testado. São quatro macros
+(`CHECK`, `CHECK_INT`, `CHECK_STR`, `CHECK_CONTAINS`/`CHECK_MISSING`), um
+contador e um código de saída diferente de zero quando algo falha — que é o
+que a CI precisa.
+
+**O que está coberto:** o formato de arquivo (ida e volta, campo entre aspas
+vazio, arquivo antigo sem o tipo da classe, extensão completada, detecção de
+alteração pendente), a geração de Java (um arquivo por classe, `package` antes
+dos `import`, palavra-chave por tipo de classe, relacionamentos virando
+código, stubs de interface, tradução de tipo e de visibilidade) e a leitura de
+volta (ciclo sem perda, duas voltas estáveis, `@Override` ignorado, Java sem
+marcador, pasta vazia não apaga o diagrama).
+
+**A comparação de diagramas é por nome, nunca por id nem por ordem:** a
+importação renumera as classes e as lê em ordem alfabética, então comparar o
+`.ruml` cru acusaria diferença onde não há.
+
+**Os testes escrevem nas pastas de saída de verdade** (`build/teste/` e, por um
+instante, `codigo/`), e removem o que escreveram pelos nomes do diagrama de
+amostra — nunca a pasta inteira, que é onde fica o código do usuário.
+
+**CI** (`.gitlab-ci.yml`): o mesmo `make test` num runner Linux. A raylib é
+compilada lá e fica em cache entre execuções; o `Makefile` escolhe compilador
+e bibliotecas pelo sistema, então o comando é o mesmo nos dois lugares.
+
 ## Roadmap (alto nível)
 
 - [x] Criação, edição e exclusão de classes
@@ -282,6 +316,6 @@ cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 - [ ] Exportar para PlantUML
 - [ ] Validação do modelo (interface com atributo, nome duplicado, etc.)
 - [ ] Refazer (Ctrl+Y)
-- [ ] Testes automatizados e CI
+- [x] Testes automatizados e CI (`make test`)
 
 Consulte também [BUILD.md](BUILD.md) e [CONVENTIONS.md](CONVENTIONS.md).

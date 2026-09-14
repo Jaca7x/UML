@@ -60,3 +60,9 @@ dkms.conf
 # Codigo gerado a partir do diagrama
 /codigo/
 /recuperacao.ruml
+
+# Artefatos de build e saida dos testes
+/build/
+
+# raylib compilada pela CI (fica em cache entre execucoes)
+/.raylib/

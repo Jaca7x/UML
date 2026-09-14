@@ -592,15 +592,21 @@ static void ReadBody(const char *path)
 
 bool ImportJavaCode(const char *package, int *outClassCount, char *outFolder, int outFolderSize)
 {
-    *outClassCount = 0;
-
     char cleaned[PACKAGE_LEN] = {0};
+
     CleanPackageName(package, cleaned, sizeof(cleaned));
     BuildPackageFolder(cleaned, outFolder, outFolderSize);
 
-    if (!DirectoryExists(outFolder)) return false;
+    return ImportJavaCodeFromFolder(outFolder, outClassCount);
+}
 
-    FilePathList files = LoadDirectoryFiles(outFolder);
+bool ImportJavaCodeFromFolder(const char *folder, int *outClassCount)
+{
+    *outClassCount = 0;
+
+    if (!DirectoryExists(folder)) return false;
+
+    FilePathList files = LoadDirectoryFiles(folder);
     int candidates = 0;
 
     for (unsigned int i = 0; i < files.count; i++)

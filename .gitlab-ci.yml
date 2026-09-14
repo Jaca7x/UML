@@ -1,0 +1,37 @@
+# Os testes do RayUML Editor rodam sem abrir janela, entao cabem num runner
+# comum. A raylib ainda precisa ser compilada aqui: nao existe pacote dela nas
+# distribuicoes usadas pelos runners compartilhados.
+#
+# O editor e desenvolvido no Windows com w64devkit; este job existe para
+# garantir que a logica (formato de arquivo, geracao e leitura de Java) nao
+# depende disso e continua correta a cada push.
+
+image: gcc:13
+
+stages:
+  - test
+
+variables:
+  RAYLIB_VERSION: "5.5"
+  GIT_DEPTH: "10"
+
+testes:
+  stage: test
+  cache:
+    key: "raylib-$RAYLIB_VERSION"
+    paths:
+      - .raylib/
+  before_script:
+    - apt-get update -qq
+    - >
+      apt-get install -y -qq --no-install-recommends
+      libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+      libgl1-mesa-dev
+    - |
+      if [ ! -f .raylib/src/libraylib.a ]; then
+        rm -rf .raylib
+        git clone --depth 1 --branch "$RAYLIB_VERSION" https://github.com/raysan5/raylib.git .raylib
+        make -C .raylib/src PLATFORM=PLATFORM_DESKTOP
+      fi
+  script:
+    - make test RAYLIB_PATH="$PWD/.raylib"
