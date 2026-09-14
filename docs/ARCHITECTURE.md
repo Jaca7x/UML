@@ -196,9 +196,21 @@ Java exige que a pasta corresponda ao pacote, então gerar tudo plano obrigaria
 a mover os arquivos à mão antes de importar num projeto. Campo vazio mantém o
 comportamento anterior: arquivos soltos em `codigo/`, sem declaração.
 
-**Limitação conhecida:** gerar de novo **sobrescreve** os arquivos. Código
-escrito à mão dentro de `codigo/` se perde — a pasta é saída descartável
-(está no `.gitignore`), não lugar de trabalho.
+**Gerar de novo não apaga o que você escreveu.** Antes de sobrescrever, o
+gerador lê o arquivo anterior e traz de volta o corpo de cada método que
+continua existindo, mais os `import` que estavam lá. Isso passou a ser
+necessário quando a importação apareceu: ela convida a mexer no código, e até
+então mexer significava perder na próxima geração.
+
+A divisão de responsabilidade é: **a estrutura pertence ao diagrama, o corpo
+pertence ao código.** Tirar um método do diagrama tira o método do arquivo;
+renomear uma classe gera arquivo novo e o antigo fica para trás.
+
+**A assinatura que casa é nome + argumentos, sem o tipo de retorno.** Trocar o
+retorno no diagrama preserva o corpo e deixa o compilador apontar o que
+precisa mudar — melhor do que o gerador apagar código em silêncio por causa de
+uma letra alterada. Os stubs `@Override` recebem o mesmo tratamento:
+implementar a interface é justamente o que se faz à mão.
 
 ### `codeparse` (`codeparse.h` / `codeparse.c`)
 
@@ -356,6 +368,7 @@ e bibliotecas pelo sistema, então o comando é o mesmo nos dois lugares.
 - [x] Tipos de classe (abstrata, interface, enum)
 - [x] Geração de código Java, com pacote opcional
 - [x] Importação de código Java de volta para o diagrama
+- [x] Gerar sem apagar o código escrito à mão
 - [ ] Exportar o diagrama como imagem
 - [ ] Exportar para PlantUML
 - [x] Validação do modelo (painel de problemas)

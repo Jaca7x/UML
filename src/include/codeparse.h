@@ -12,4 +12,18 @@ bool ImportJavaCode(const char *package, int *outClassCount, char *outFolder, in
 // interpretar o que ha nele, e e por onde os testes entram.
 bool ImportJavaCodeFromFolder(const char *folder, int *outClassCount);
 
+// --- Usados pelo codegen para nao apagar o que foi escrito a mao ---
+
+// Corpo do metodo com esta assinatura dentro do texto de um .java, sem as
+// chaves e com a indentacao original. A assinatura e nome + argumentos: o
+// tipo de retorno de proposito nao entra, para que troca-lo preserve o corpo
+// e deixe o compilador apontar o que precisa mudar, em vez de o gerador
+// apagar codigo em silencio.
+bool FindJavaMethodBody(const char *source, const char *name, const char *args,
+                        char *out, int outSize);
+
+// Linhas de import que o arquivo ja tinha. Sem elas, o corpo preservado que
+// usasse qualquer outra classe deixaria de compilar na proxima geracao.
+void CollectImports(const char *source, char *out, int outSize);
+
 #endif

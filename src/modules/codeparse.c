@@ -467,6 +467,159 @@ static void ParseMemberLine(int classIndex, ClassKind kind, const char *line, bo
     else if (strchr(line, ';') != NULL) ParseField(classIndex, kind, line);
 }
 
+static void StripSpaces(const char *src, char *out, int outSize)
+{
+    int length = 0;
+
+    for (int i = 0; src[i] != '\0' && length < outSize - 1; i++)
+    {
+        if (src[i] != ' ' && src[i] != '\t') out[length++] = src[i];
+    }
+
+    out[length] = '\0';
+}
+
+// "    public boolean latir() {" bate com latir + ""
+static bool MatchesSignature(const char *line, const char *name, const char *args)
+{
+    const char *open = strchr(line, '(');
+    const char *close = strrchr(line, ')');
+
+    if (open == NULL || close == NULL || close < open) return false;
+    if (strchr(line, '{') == NULL) return false;
+
+    char head[LINE_CAPACITY];
+    int headLength = (int)(open - line);
+
+    if (headLength > LINE_CAPACITY - 1) headLength = LINE_CAPACITY - 1;
+
+    memcpy(head, line, headLength);
+    head[headLength] = '\0';
+
+    char trimmed[LINE_CAPACITY];
+    TrimSpaces(head, trimmed, sizeof(trimmed));
+
+    char found[METHOD_NAME_LEN];
+    LastToken(trimmed, found, sizeof(found));
+
+    if (strcmp(found, name) != 0) return false;
+
+    char foundArgs[LINE_CAPACITY];
+    int argsLength = (int)(close - open) - 1;
+
+    if (argsLength < 0) argsLength = 0;
+    if (argsLength > LINE_CAPACITY - 1) argsLength = LINE_CAPACITY - 1;
+
+    memcpy(foundArgs, open + 1, argsLength);
+    foundArgs[argsLength] = '\0';
+
+    // Espaco nao muda a assinatura, e o usuario pode ter reformatado a linha
+    char normalizedFound[LINE_CAPACITY];
+    char normalizedWanted[LINE_CAPACITY];
+
+    StripSpaces(foundArgs, normalizedFound, sizeof(normalizedFound));
+    StripSpaces(args, normalizedWanted, sizeof(normalizedWanted));
+
+    return strcmp(normalizedFound, normalizedWanted) == 0;
+}
+
+bool FindJavaMethodBody(const char *source, const char *name, const char *args,
+                        char *out, int outSize)
+{
+    out[0] = '\0';
+
+    if (source == NULL) return false;
+
+    int depth = 0;
+    bool inComment = false;
+    bool collecting = false;
+    int used = 0;
+
+    const char *cursor = source;
+    char raw[LINE_CAPACITY];
+
+    while ((cursor = NextLine(cursor, raw, sizeof(raw))) != NULL)
+    {
+        char line[LINE_CAPACITY];
+        TrimSpaces(raw, line, sizeof(line));
+
+        if (inComment)
+        {
+            if (strstr(line, "*/") != NULL) inComment = false;
+            continue;
+        }
+
+        if (!collecting && StartsWith(line, "/*"))
+        {
+            if (strstr(line, "*/") == NULL) inComment = true;
+            continue;
+        }
+
+        if (collecting)
+        {
+            int after = depth + CountBraces(line);
+
+            // A chave que fecha o metodo encerra o corpo e nao faz parte dele
+            if (after <= 1) return true;
+
+            int length = (int)strlen(raw);
+
+            if (used + length + 1 < outSize)
+            {
+                memcpy(out + used, raw, length);
+                used += length;
+                out[used++] = '\n';
+                out[used] = '\0';
+            }
+
+            depth = after;
+            continue;
+        }
+
+        if (depth == 1 && MatchesSignature(line, name, args))
+        {
+            collecting = true;
+            depth += CountBraces(line);
+            continue;
+        }
+
+        depth += CountBraces(line);
+    }
+
+    // Chegou ao fim sem fechar: arquivo truncado, melhor descartar o que veio
+    return false;
+}
+
+void CollectImports(const char *source, char *out, int outSize)
+{
+    out[0] = '\0';
+
+    if (source == NULL) return;
+
+    int used = 0;
+    const char *cursor = source;
+    char raw[LINE_CAPACITY];
+
+    while ((cursor = NextLine(cursor, raw, sizeof(raw))) != NULL)
+    {
+        char line[LINE_CAPACITY];
+        TrimSpaces(raw, line, sizeof(line));
+
+        // Os imports ficam todos antes da declaracao do tipo
+        if (strchr(line, '{') != NULL) return;
+        if (!StartsWith(line, "import ")) continue;
+
+        int length = (int)strlen(line);
+
+        if (used + length + 1 >= outSize) return;
+
+        memcpy(out + used, line, length);
+        used += length;
+        out[used++] = '\n';
+        out[used] = '\0';
+    }
+}
+
 // Primeira passada: so cria a classe. Os relacionamentos citam as outras por
 // nome, entao nenhum corpo pode ser lido antes de todas existirem.
 static bool ReadDeclaration(const char *path, int layoutIndex)

@@ -87,5 +87,6 @@ void RunStorageTests(void);
 void RunCodegenTests(void);
 void RunCodeparseTests(void);
 void RunValidationTests(void);
+void RunPreserveTests(void);
 
 #endif
