@@ -1,12 +1,16 @@
 #include "../include/codegen.h"
 #include "../include/editor.h"
 #include "../include/relations.h"
+#include "../include/codeparse.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define SOURCE_CAPACITY 8192
-#define LINE_CAPACITY    256
+// Com os corpos preservados o arquivo deixa de ter tamanho previsivel: passa
+// a caber nele o codigo que o usuario escreveu.
+#define SOURCE_CAPACITY 65536
+#define LINE_CAPACITY     256
+#define BODY_CAPACITY    8192
 
 // Tipos do diagrama que nao sao validos em Java. O resto passa direto: nome de
 // classe usado como tipo tem que sobreviver a traducao.
@@ -61,7 +65,21 @@ static bool IsManyMultiplicity(const char *multiplicity)
 static void AppendLine(char *source, int capacity, const char *line)
 {
     int used = (int)strlen(source);
+
+    // Sem isto, um arquivo no limite passaria tamanho negativo ao snprintf
+    if (used >= capacity - 1) return;
+
     snprintf(source + used, capacity - used, "%s\n", line);
+}
+
+// O corpo preservado ja vem com as proprias quebras de linha
+static void AppendRaw(char *source, int capacity, const char *text)
+{
+    int used = (int)strlen(source);
+
+    if (used >= capacity - 1) return;
+
+    snprintf(source + used, capacity - used, "%s", text);
 }
 
 // Heranca: no maximo uma em Java, entao a primeira encontrada vence.
@@ -204,7 +222,34 @@ static void AppendFields(char *source, int capacity, const UMLClass *cls)
     }
 }
 
-static void AppendMethods(char *source, int capacity, const UMLClass *cls)
+// Escreve o corpo entre as chaves: o que estava no arquivo, se houver, ou o
+// esqueleto minimo que compila.
+static void AppendBody(char *source, int capacity, const char *existing,
+                       const char *name, const char *args, const char *returnType)
+{
+    char preserved[BODY_CAPACITY];
+
+    if (existing != NULL && FindJavaMethodBody(existing, name, args, preserved, sizeof(preserved))
+     && preserved[0] != '\0')
+    {
+        AppendRaw(source, capacity, preserved);
+        return;
+    }
+
+    AppendLine(source, capacity, "        // TODO implementar");
+
+    const char *defaultReturn = DefaultReturn(returnType);
+
+    if (defaultReturn != NULL)
+    {
+        char line[LINE_CAPACITY];
+        snprintf(line, sizeof(line), "        return %s;", defaultReturn);
+
+        AppendLine(source, capacity, line);
+    }
+}
+
+static void AppendMethods(char *source, int capacity, const UMLClass *cls, const char *existing)
 {
     for (int i = 0; i < cls->methodCount; i++)
     {
@@ -225,14 +270,8 @@ static void AppendMethods(char *source, int capacity, const UMLClass *cls)
         snprintf(line, sizeof(line), "    %s%s %s(%s) {",
                  MapVisibility(method->visibility), returnType, method->name, method->args);
         AppendLine(source, capacity, line);
-        AppendLine(source, capacity, "        // TODO implementar");
 
-        const char *defaultReturn = DefaultReturn(returnType);
-        if (defaultReturn != NULL)
-        {
-            snprintf(line, sizeof(line), "        return %s;", defaultReturn);
-            AppendLine(source, capacity, line);
-        }
+        AppendBody(source, capacity, existing, method->name, method->args, returnType);
 
         AppendLine(source, capacity, "    }");
     }
@@ -250,7 +289,8 @@ static bool HasMethodNamed(const UMLClass *cls, const char *name)
 
 // Classe concreta que implementa interface e obrigada a definir os metodos
 // dela: sem os stubs o arquivo gerado nao compila.
-static void AppendInterfaceStubs(char *source, int capacity, const UMLClass *cls)
+static void AppendInterfaceStubs(char *source, int capacity, const UMLClass *cls,
+                                 const char *existing)
 {
     if (cls->kind == CLASS_KIND_INTERFACE || cls->kind == CLASS_KIND_ENUM) return;
 
@@ -277,14 +317,10 @@ static void AppendInterfaceStubs(char *source, int capacity, const UMLClass *cls
 
             snprintf(line, sizeof(line), "    public %s %s(%s) {", returnType, method->name, method->args);
             AppendLine(source, capacity, line);
-            AppendLine(source, capacity, "        // TODO implementar");
 
-            const char *defaultReturn = DefaultReturn(returnType);
-            if (defaultReturn != NULL)
-            {
-                snprintf(line, sizeof(line), "        return %s;", defaultReturn);
-                AppendLine(source, capacity, line);
-            }
+            // O stub tambem e lugar de escrever codigo: implementar a
+            // interface e justamente o que se faz a mao
+            AppendBody(source, capacity, existing, method->name, method->args, returnType);
 
             AppendLine(source, capacity, "    }");
         }
@@ -347,8 +383,20 @@ static bool GenerateClassFile(const UMLClass *cls, const char *package, const ch
 {
     if (cls->name[0] == '\0') return false;
 
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.java", folder, cls->name);
+
+    // O arquivo anterior e a unica fonte do que o usuario escreveu a mao: sem
+    // le-lo antes de sobrescrever, gerar de novo apaga todo corpo de metodo.
+    char *existing = FileExists(path) ? LoadFileText(path) : NULL;
+
     char *source = (char *)malloc(SOURCE_CAPACITY);
-    if (source == NULL) return false;
+
+    if (source == NULL)
+    {
+        if (existing != NULL) UnloadFileText(existing);
+        return false;
+    }
 
     source[0] = '\0';
 
@@ -369,10 +417,21 @@ static bool GenerateClassFile(const UMLClass *cls, const char *package, const ch
         AppendLine(source, SOURCE_CAPACITY, line);
     }
 
-    if (NeedsListImport(cls))
+    // Imports que ja estavam la: o corpo preservado depende deles para
+    // compilar, e o gerador nao tem como adivinhar quais sao
+    char imports[LINE_CAPACITY * 8] = {0};
+    CollectImports(existing, imports, sizeof(imports));
+
+    bool needsList = NeedsListImport(cls);
+    bool hasList = (strstr(imports, "import java.util.List;") != NULL);
+
+    if (imports[0] != '\0' || (needsList && !hasList))
     {
         AppendLine(source, SOURCE_CAPACITY, "");
-        AppendLine(source, SOURCE_CAPACITY, "import java.util.List;");
+
+        if (needsList && !hasList) AppendLine(source, SOURCE_CAPACITY, "import java.util.List;");
+
+        AppendRaw(source, SOURCE_CAPACITY, imports);
     }
 
     AppendLine(source, SOURCE_CAPACITY, "");
@@ -387,16 +446,15 @@ static bool GenerateClassFile(const UMLClass *cls, const char *package, const ch
         AppendFields(source, SOURCE_CAPACITY, cls);
         AppendRelationFields(source, SOURCE_CAPACITY, cls);
         AppendDependencyMarkers(source, SOURCE_CAPACITY, cls);
-        AppendMethods(source, SOURCE_CAPACITY, cls);
-        AppendInterfaceStubs(source, SOURCE_CAPACITY, cls);
+        AppendMethods(source, SOURCE_CAPACITY, cls, existing);
+        AppendInterfaceStubs(source, SOURCE_CAPACITY, cls, existing);
     }
 
     AppendLine(source, SOURCE_CAPACITY, "}");
 
-    char path[512];
-    snprintf(path, sizeof(path), "%s/%s.java", folder, cls->name);
-
     bool saved = SaveFileText(path, source);
+
+    if (existing != NULL) UnloadFileText(existing);
     free(source);
 
     return saved;
