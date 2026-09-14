@@ -6,6 +6,7 @@
 #include "storage.h"
 #include "codegen.h"
 #include "codeparse.h"
+#include "validation.h"
 #include "history.h"
 #include "widgets.h"
 #include <stdio.h>
@@ -27,6 +28,10 @@
 #define STATUS_LEN       96
 
 #define MAX_LISTED_FILES  10
+
+#define MAX_LISTED_ISSUES 12
+#define ISSUE_ROW_HEIGHT  26
+#define ISSUE_BOX_WIDTH  640
 #define FILE_ROW_HEIGHT   26
 
 #define PANEL_WIDTH     300
@@ -49,6 +54,9 @@ static bool confirmingReplace = false;
 // Abrir um .ruml e importar os .java trocam o diagrama inteiro, entao passam
 // pelo mesmo aviso: o que muda e so o que roda depois do "pode ir".
 static void (*pendingAction)(void) = NULL;
+
+// Painel de problemas do modelo, aberto pelo botao validar
+static bool showingIssues = false;
 
 // Lista de arquivos do diretorio: evita ter que lembrar o nome para abrir
 static bool browsingFiles = false;
@@ -94,8 +102,22 @@ static void GenerateCode(void)
     if (GenerateJavaCode(packageField, &files, folder, sizeof(folder)))
     {
         char message[STATUS_LEN];
-        snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, folder);
-        SetStatus(message, ThemeSuccess());
+
+        // Gerar a partir de um diagrama com erro produz codigo que nao
+        // compila: melhor dizer agora do que o usuario descobrir no javac
+        ValidateDiagram();
+
+        if (GetErrorCount() > 0)
+        {
+            snprintf(message, sizeof(message), "%d arquivo(s), mas ha %d erro(s) — veja Exibir > validar",
+                     files, GetErrorCount());
+            SetStatus(message, ThemeDanger());
+        }
+        else
+        {
+            snprintf(message, sizeof(message), "%d arquivo(s) Java em %s/", files, folder);
+            SetStatus(message, ThemeSuccess());
+        }
     }
     else
     {
@@ -139,6 +161,12 @@ static void ImportJavaIntoDiagram(void)
         snprintf(message, sizeof(message), "Nenhum .java em %s/", folder);
         SetStatus(message, ThemeDanger());
     }
+}
+
+static void ShowIssues(void)
+{
+    ValidateDiagram();
+    showingIssues = true;
 }
 
 static void RequestReplace(void (*action)(void))
@@ -207,7 +235,7 @@ bool IsMouseOverUi(void)
 
     // Com o dialogo aberto a interface e dona de todo o input, nao so das
     // suas regioes
-    if (confirmingReplace || browsingFiles) return true;
+    if (confirmingReplace || browsingFiles || showingIssues) return true;
 
     return CheckCollisionPointRec(mouse, GetMenuBarBounds()) || CheckCollisionPointRec(mouse, GetPanelBounds());
 }
@@ -226,7 +254,8 @@ typedef enum
     ICON_THEME,
     ICON_GRID,
     ICON_CODE,
-    ICON_IMPORT
+    ICON_IMPORT,
+    ICON_CHECK
 }IconKind;
 
 static void IconClass(Rectangle a, Color tint)
@@ -351,6 +380,19 @@ static void IconImport(Rectangle a, Color tint)
     DrawTriangle(tip, top, bottom, tint);
 }
 
+// Visto dentro de um quadro: conferir o modelo
+static void IconCheck(Rectangle a, Color tint)
+{
+    DrawRectangleLinesEx(a, ICON_THICKNESS, tint);
+
+    Vector2 start = {a.x + a.width * 0.24f, a.y + a.height * 0.52f};
+    Vector2 corner = {a.x + a.width * 0.44f, a.y + a.height * 0.72f};
+    Vector2 end = {a.x + a.width * 0.78f, a.y + a.height * 0.28f};
+
+    DrawLineEx(start, corner, ICON_THICKNESS, tint);
+    DrawLineEx(corner, end, ICON_THICKNESS, tint);
+}
+
 static void DrawIcon(IconKind kind, Rectangle area, Color tint)
 {
     switch (kind)
@@ -363,6 +405,7 @@ static void DrawIcon(IconKind kind, Rectangle area, Color tint)
         case ICON_THEME:      IconTheme(area, tint); break;
         case ICON_CODE:       IconCode(area, tint); break;
         case ICON_IMPORT:     IconImport(area, tint); break;
+        case ICON_CHECK:      IconCheck(area, tint); break;
         default:              IconGrid(area, tint); break;
     }
 }
@@ -398,13 +441,14 @@ static const ToolbarButton insertButtons[] = {
 static const ToolbarButton viewButtons[] = {
     {ICON_FULLSCREEN, "tela",    IsWindowFullscreen,  ToggleFullscreenMode},
     {ICON_THEME,      "tema",    IsDarkMode,          ToggleTheme},
-    {ICON_GRID,       "alinhar", IsSnapToGridEnabled, ToggleSnapToGrid}
+    {ICON_GRID,       "alinhar", IsSnapToGridEnabled, ToggleSnapToGrid},
+    {ICON_CHECK,      "validar", NULL,                ShowIssues}
 };
 
 static const ToolbarTab tabs[] = {
     {"Arquivo", fileButtons,   4},
     {"Inserir", insertButtons, 2},
-    {"Exibir",  viewButtons,   3}
+    {"Exibir",  viewButtons,   4}
 };
 
 #define TAB_COUNT 3
@@ -607,6 +651,88 @@ void DrawUi(int *cursor) {
 
     content.y += 34;
     content.height -= 34;
+
+    if (showingIssues)
+    {
+        if (IsKeyPressed(KEY_ESCAPE)) showingIssues = false;
+
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.55f));
+
+        int total = GetIssueCount();
+        int visible = (total > MAX_LISTED_ISSUES) ? MAX_LISTED_ISSUES : total;
+        float listHeight = (visible > 0) ? visible * (ISSUE_ROW_HEIGHT + 4) : 34.0f;
+
+        Rectangle box = {(GetScreenWidth() - ISSUE_BOX_WIDTH) / 2.0f,
+                         GetScreenHeight() / 2.0f - (listHeight + 120) / 2.0f,
+                         ISSUE_BOX_WIDTH, listHeight + 120};
+
+        DrawRectangleRec(box, ThemeSurface());
+        DrawRectangleLinesEx(box, 2, (GetErrorCount() > 0) ? ThemeDanger() : ThemeAccent());
+
+        char title[STATUS_LEN];
+
+        if (total == 0) snprintf(title, sizeof(title), "Nenhum problema no diagrama");
+        else snprintf(title, sizeof(title), "%d problema(s): %d erro(s)", total, GetErrorCount());
+
+        DrawUiText(title, box.x + 20, box.y + 18, 16, ThemeText());
+
+        float rowY = box.y + 50;
+
+        if (total == 0)
+        {
+            DrawUiText("Os nomes, os tipos e as setas estao coerentes.",
+                       box.x + 20, rowY + 6, 13, ThemeTextMuted());
+        }
+
+        for (int i = 0; i < visible; i++)
+        {
+            const ValidationIssue *issue = GetIssue(i);
+            Rectangle row = {box.x + 20, rowY, box.width - 40, ISSUE_ROW_HEIGHT};
+
+            bool clickable = (issue->classId != -1);
+            bool hover = clickable && CheckCollisionPointRec(GetMousePosition(), row);
+
+            if (hover) *cursor = MOUSE_CURSOR_POINTING_HAND;
+
+            Color accent = (issue->severity == ISSUE_ERROR) ? ThemeDanger() : ThemeAccent();
+
+            DrawRectangleRec(row, hover ? Fade(accent, 0.18f) : ThemeSurface());
+
+            // Faixa colorida a esquerda: separa erro de aviso sem depender de
+            // ler o texto inteiro
+            DrawRectangleRec((Rectangle){row.x, row.y, 3, row.height}, accent);
+
+            DrawUiText((issue->severity == ISSUE_ERROR) ? "erro" : "aviso",
+                       row.x + 12, row.y + 5, 11, accent);
+            DrawUiText(issue->message, row.x + 58, row.y + 5, 13, ThemeText());
+
+            if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            {
+                SelectClassById(issue->classId);
+                showingIssues = false;
+
+                return;
+            }
+
+            rowY += ISSUE_ROW_HEIGHT + 4;
+        }
+
+        if (total > visible)
+        {
+            char more[STATUS_LEN];
+            snprintf(more, sizeof(more), "e mais %d...", total - visible);
+
+            DrawUiText(more, box.x + 20, rowY + 2, 12, ThemeTextMuted());
+        }
+
+        if (PanelButton((Rectangle){box.x + box.width - 110, box.y + box.height - 42, 90, 30},
+                        "Fechar", false, ThemeBorder(), 13, cursor))
+        {
+            showingIssues = false;
+        }
+
+        return;
+    }
 
     if (browsingFiles)
     {

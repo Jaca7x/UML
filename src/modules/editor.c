@@ -108,6 +108,18 @@ void ClearClassSelection(void)
     panelFocus = FOCUS_NONE;
 }
 
+// Usado pelo painel de problemas: clicar num aviso leva a classe citada
+void SelectClassById(int id)
+{
+    int index = FindClassIndexById(id);
+    if (index == -1) return;
+
+    ClearClassSelection();
+
+    arrayClass[index].isSelected = true;
+    selectedIndex = index;
+}
+
 bool HasSelectedClass(void)
 {
     return selectedIndex != -1;

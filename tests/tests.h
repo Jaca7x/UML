@@ -86,5 +86,6 @@ void RemoveSampleJavaFiles(const char *folder);
 void RunStorageTests(void);
 void RunCodegenTests(void);
 void RunCodeparseTests(void);
+void RunValidationTests(void);
 
 #endif
