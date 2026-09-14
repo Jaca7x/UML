@@ -31,6 +31,7 @@ UML/
 │   │   ├── renderer.h        # Desenho do mundo (grid)
 │   │   ├── codegen.h         # Geração de código Java a partir do diagrama
 │   │   ├── codeparse.h       # Leitura de código Java de volta para o diagrama
+│   │   ├── validation.h      # Regras de coerência do modelo
 │   │   ├── ui.h              # Barra de menu, painel lateral, tela cheia
 │   │   ├── uifont.h          # Carregamento e desenho de texto
 │   │   └── widgets.h         # Botões e campos do painel de propriedades
@@ -266,6 +267,47 @@ clique selecionaria também a classe embaixo do cursor.
 cada um "peça" um cursor (mão sobre botão, seta diagonal na alça) sem chamar
 `SetMouseCursor` direto, mantendo a decisão final no loop principal.
 
+### `validation` (`validation.h` / `validation.c`)
+
+Regras de coerência do modelo, listadas num painel (botão **validar**, aba
+*Exibir*).
+
+**Por que passou a existir:** enquanto o diagrama era só um desenho, um erro
+nele era um desenho errado. Com a geração de código ele virou entrada de
+compilador — uma seta de herança desenhada ao contrário produz
+`class Animal extends Cachorro`, em silêncio. As regras existem para o sistema
+dizer em voz alta o que antes só aparecia quando alguém tentava compilar o
+resultado.
+
+**A divisão é por consequência, não por gravidade sentida:**
+
+| | significa |
+|---|---|
+| **erro** | o código gerado não compila, ou o arquivo não faz sentido |
+| **aviso** | compila, mas quase certamente não é o que se quis dizer |
+
+**Erros:** nome duplicado (duas classes viram o mesmo arquivo, e a segunda
+passa por cima da primeira), nome que não é identificador Java válido —
+espaço, acento, começar com dígito, ou ser palavra reservada —, atributo sem
+tipo (vira `private void x;`), assinatura de método repetida, enum em herança,
+interface herdando de classe.
+
+**Avisos:** abstrata herdando de concreta (o formato exato da hierarquia
+invertida), multiplicidade em herança ou realização (que não têm "quantos"),
+interface com atributo, enum com método (que o gerador ignora), abstrata sem
+nenhum método.
+
+**Sobrecarga não é erro.** Mesmo nome com argumentos diferentes é válido em
+Java; só a assinatura inteira repetida é que não compila.
+
+**O diagrama limpo tem de ficar calado.** Se as regras acusassem algo no
+`exemplo.ruml`, o painel viraria ruído que se aprende a ignorar — e um teste
+verifica exatamente isso.
+
+Cada problema guarda o `classId` a que se refere: clicar na linha seleciona a
+classe. **Gerar código roda a validação antes** e, havendo erro, a barra de
+status diz quantos em vez de anunciar sucesso.
+
 ## Testes
 
 `make test` compila os módulos junto com `tests/` e roda tudo **sem abrir
@@ -285,7 +327,9 @@ alteração pendente), a geração de Java (um arquivo por classe, `package` ant
 dos `import`, palavra-chave por tipo de classe, relacionamentos virando
 código, stubs de interface, tradução de tipo e de visibilidade) e a leitura de
 volta (ciclo sem perda, duas voltas estáveis, `@Override` ignorado, Java sem
-marcador, pasta vazia não apaga o diagrama).
+marcador, pasta vazia não apaga o diagrama) e as regras do modelo (cada uma
+dispara no caso que descreve, sobrecarga passa, e o diagrama de referência
+fica calado).
 
 **A comparação de diagramas é por nome, nunca por id nem por ordem:** a
 importação renumera as classes e as lê em ordem alfabética, então comparar o
@@ -314,7 +358,7 @@ e bibliotecas pelo sistema, então o comando é o mesmo nos dois lugares.
 - [x] Importação de código Java de volta para o diagrama
 - [ ] Exportar o diagrama como imagem
 - [ ] Exportar para PlantUML
-- [ ] Validação do modelo (interface com atributo, nome duplicado, etc.)
+- [x] Validação do modelo (painel de problemas)
 - [ ] Refazer (Ctrl+Y)
 - [x] Testes automatizados e CI (`make test`)
 

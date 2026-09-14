@@ -215,6 +215,7 @@ int main(void)
     RunStorageTests();
     RunCodegenTests();
     RunCodeparseTests();
+    RunValidationTests();
 
     return FinishTests();
 }

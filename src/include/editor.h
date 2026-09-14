@@ -64,6 +64,7 @@ bool IsPlacingClass(void);
 void UpdateAndDrawBoxes(Camera2D camera, int *cursor);
 
 bool HasSelectedClass(void);
+void SelectClassById(int id);
 int GetSelectedClassCount(void);
 void ClearClassSelection(void);
 void DrawClassProperties(Rectangle area, int *cursor);
